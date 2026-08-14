@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TokenMon</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="stage">
+    <!-- 面板(展开时可见, 位于球上方) -->
+    <div id="panel">
+      <div id="title">
+        <span id="dot">●</span>
+        <span id="name">TokenMon</span>
+        <button id="btn-close" title="关闭(托盘可重新拉起)">×</button>
+        <button id="btn-refresh" title="刷新">⟳</button>
+      </div>
+      <div id="rows">
+        <div class="row" data-key="total"><span class="rk">Token 用量</span><span class="rv" id="v-total">—</span></div>
+        <div class="row" data-key="cache"><span class="rk">缓存命中</span><span class="rv" id="v-cache">—</span></div>
+        <div class="row" data-key="cost"><span class="rk">费用</span><span class="rv" id="v-cost">—</span></div>
+        <div class="row" data-key="balance"><span class="rk">余额</span><span class="rv" id="v-balance">—</span></div>
+      </div>
+      <div id="btns">
+        <button data-act="details">详情</button>
+        <button data-act="convs">对话</button>
+        <button data-act="skin">皮肤</button>
+        <button data-act="settings">设置</button>
+      </div>
+      <div id="status">启动中…</div>
+      <div id="convs" hidden>
+        <div id="convs-header">最近对话</div>
+        <div id="convs-box"></div>
+        <div id="convs-status"></div>
+      </div>
+    </div>
+    <!-- 精灵球: 上下两半, CSS clip 裁剪, 开合动画 -->
+    <div id="ballwrap">
+      <img id="half-top" class="half" src="skins/ball_pokeball.svg" alt="" draggable="false">
+      <img id="half-bot" class="half" src="skins/ball_pokeball.svg" alt="" draggable="false">
+    </div>
+  </div>
+  <!-- 右键/按钮弹出菜单 -->
+  <div id="menu" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

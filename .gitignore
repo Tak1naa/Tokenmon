@@ -14,6 +14,12 @@ build/
 *.spec.bak
 .venv-win/
 
+# Rust / Tauri
+target/
+.rustup/
+.cargo/
+tauri/src-tauri/gen/
+
 # 编辑器
 .vscode/
 .idea/
