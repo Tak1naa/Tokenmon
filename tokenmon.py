@@ -774,7 +774,7 @@ if HAVE_QT:
     QMenu::separator { height: 1px; background: #3a3f4a; margin: 4px 6px; }
     QFrame#panel {
         background-color: #16181d;
-        border-radius: 14px;
+        border-radius: 0px;  /* 胶囊形窗口: 圆角由上下球弧提供 */
     }
     QFrame#convrow { border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
     QLabel[cls="dot"] { color: #3fb950; font-size: 13px; }
@@ -815,15 +815,17 @@ if HAVE_QT:
     #   超级球 = 蓝上半 + 球内两侧红色矩形侧块; 高级球 = 深色上半 + 顶部黄色横纹
     # 侧块几何(球坐标系,球心 32,32,球半径 30.5):
     #   bump_dx = 左块左边距球左缘的距离; bump_dy = 距球顶; bump_w/bump_h = 尺寸
+    # border = 打开时窗口胶囊轮廓的描边色
     SKINS = {
-        "pokeball": {"label": "精灵球", "top_hi": "#ef3a26", "top_lo": "#cf2410"},
+        "pokeball": {"label": "精灵球", "top_hi": "#ef3a26", "top_lo": "#cf2410",
+                     "border": "#e3350d"},
         "master": {"label": "大师球", "top_hi": "#8a4fd8", "top_lo": "#551fa8",
-                   "emblem": "M", "emblem_color": "#f04f9e"},
+                   "emblem": "M", "emblem_color": "#f04f9e", "border": "#8a4fd8"},
         "great": {"label": "超级球", "top_hi": "#3f7fe0", "top_lo": "#1d55b3",
                   "bumps": True, "bump_w": 10.0, "bump_h": 8.0,
-                  "bump_dx": 3.5, "bump_dy": 18.0},
+                  "bump_dx": 3.5, "bump_dy": 18.0, "border": "#3f7fe0"},
         "ultra": {"label": "高级球", "top_hi": "#3d4046", "top_lo": "#17181c",
-                  "stripe": "#ffd733"},
+                  "stripe": "#ffd733", "border": "#ffd733"},
     }
     DEFAULT_SKIN = "pokeball"
 
@@ -850,22 +852,25 @@ if HAVE_QT:
         p.save()
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         cx, cy = rect.center().x(), rect.center().y()
-        r = min(rect.width(), rect.height()) / 2 - 1.5
-        ball_circle = QRectF(cx - r, cy - r, 2 * r, 2 * r)
+        # 椭圆球体: rx/ry 分别取宽/高(合拢态 64×64 时 rx==ry,行为与圆形完全一致;
+        # 打开态球拉伸成与窗口同宽的扁椭球,两半球吸附窗口边框)
+        rx = rect.width() / 2 - 1.5
+        ry = rect.height() / 2 - 1.5
+        ball_circle = QRectF(cx - rx, cy - ry, 2 * rx, 2 * ry)
 
         top = QPainterPath()
-        top.moveTo(cx - r, cy)
-        # Qt 角度: 0°=3点钟方向,逆时针为正; 0°→180° 经 12 点方向画上半圆
+        top.moveTo(cx - rx, cy)
+        # Qt 角度: 0°=3点钟方向,逆时针为正; 0°→180° 经 12 点方向画上半
         top.arcTo(ball_circle, 0, 180)
         top.closeSubpath()
-        grad = QLinearGradient(cx, cy - r, cx, cy)
+        grad = QLinearGradient(cx, cy - ry, cx, cy)
         grad.setColorAt(0.0, QColor(skin["top_hi"]))
         grad.setColorAt(1.0, QColor(skin["top_lo"]))
         p.fillPath(top, QBrush(grad))
 
         bottom = QPainterPath()
-        bottom.moveTo(cx - r, cy)
-        # 180°→360° 经 6 点方向画下半圆
+        bottom.moveTo(cx - rx, cy)
+        # 180°→360° 经 6 点方向画下半
         bottom.arcTo(ball_circle, 180, 180)
         bottom.closeSubpath()
         p.fillPath(bottom, QBrush(QColor("#f8f9fa")))
@@ -878,11 +883,11 @@ if HAVE_QT:
             clip.addEllipse(ball_circle)
             p.save()
             p.setClipPath(clip, Qt.ClipOperation.IntersectClip)
-            p.fillRect(QRectF(cx - r, cy - r + 9, 2 * r, 5), QColor(skin["stripe"]))
+            p.fillRect(QRectF(cx - rx, cy - ry + 9, 2 * rx, 5), QColor(skin["stripe"]))
             p.restore()
 
         band_h = 8.0
-        band = QRectF(cx - r, cy - band_h / 2, 2 * r, band_h)
+        band = QRectF(cx - rx, cy - band_h / 2, 2 * rx, band_h)
         p.fillRect(band, QColor("#1e2023"))
         p.fillRect(QRectF(band.left(), band.top(), band.width(), 1),
                    QColor(255, 255, 255, 18))
@@ -904,24 +909,24 @@ if HAVE_QT:
 
         p.setPen(QPen(QColor("#26282d"), 1))
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawEllipse(QPointF(cx, cy), r, r)
+        p.drawEllipse(QPointF(cx, cy), rx, ry)
 
         # 顶部徽记(大师球的 M): 顶部小徽标。徽记区只留 9px ——
         # 数据文字区必须与普通球等高,字号才会一致(同一文字在所有球上同字号)
         emblem = skin.get("emblem")
-        emblem_h = r - band_h / 2 - 16.5
+        emblem_h = ry - band_h / 2 - 16.5
         if emblem:
             ef = QFont()
             ef.setBold(True)
             es = 9
             while es >= 7:
                 ef.setPixelSize(es)
-                if QFontMetrics(ef).horizontalAdvance(emblem) <= 2 * r - 8:
+                if QFontMetrics(ef).horizontalAdvance(emblem) <= 2 * rx - 8:
                     break
                 es -= 1
             p.setFont(ef)
             p.setPen(QColor(skin.get("emblem_color", "#ffffff")))
-            p.drawText(QRectF(cx - r, cy - r + 1, 2 * r, emblem_h - 1),
+            p.drawText(QRectF(cx - rx, cy - ry + 1, 2 * rx, emblem_h - 1),
                        Qt.AlignmentFlag.AlignCenter, emblem)
 
         # 超级球: 球内两侧的红色矩形侧块(不伸出球体,圆角 2px)
@@ -929,24 +934,24 @@ if HAVE_QT:
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QColor("#e3350d"))
             bw = skin.get("bump_w", 10.0)
-            bh = skin.get("bump_h", 15.0)
-            bdx = skin.get("bump_dx", 1.5)
-            bdy = skin.get("bump_dy", 10.0)
-            p.drawRoundedRect(QRectF(cx - r + bdx, cy - r + bdy, bw, bh), 2, 2)
-            p.drawRoundedRect(QRectF(cx + r - bdx - bw, cy - r + bdy, bw, bh), 2, 2)
+            bh = skin.get("bump_h", 8.0)
+            bdx = skin.get("bump_dx", 3.5)
+            bdy = skin.get("bump_dy", 18.0)
+            p.drawRoundedRect(QRectF(cx - rx + bdx, cy - ry + bdy, bw, bh), 2, 2)
+            p.drawRoundedRect(QRectF(cx + rx - bdx - bw, cy - ry + bdy, bw, bh), 2, 2)
 
         if text:
             # 有徽记的球(大师球)文字区下移避开徽记,但高度按 16.5px 起步 ——
             # 字号适配只由文字宽度决定,与皮肤无关(各球同文字同字号)
-            text_area = QRectF(cx - r, cy - r + (emblem_h + 1 if emblem else 0),
-                               2 * r, (16.5 if emblem else r - band_h / 2))
+            text_area = QRectF(cx - rx, cy - ry + (emblem_h + 1 if emblem else 0),
+                               2 * rx, (16.5 if emblem else ry - band_h / 2))
             font = _FONT_CACHE.get(text)
             if font is None:
                 font = QFont()
                 font.setBold(True)
                 size = 13
                 # 顶部半圆的实际可用宽度(球径减去两侧边距),比固定 48px 更宽松
-                max_w = max(40.0, 2 * r - 10)
+                max_w = max(40.0, 2 * rx - 10)
                 while size >= 6:  # 最小 6pt,长金额/长数字也能完整放下
                     font.setPixelSize(size)
                     if QFontMetrics(font).horizontalAdvance(text) <= max_w:
@@ -1020,19 +1025,53 @@ if HAVE_QT:
                 draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
                               self._text, skin=self.skin)
             else:
-                # 打开态(上下开合): 上半球留在原位,下半球下移 gap,不画文字
-                # (文字位于横缝会被撕成两半;面板已在中间显示数据)
+                # 打开态(上下开合): 球拉伸成与窗口同宽的扁椭球(吸附窗口边框),
+                # 上半留在原位、下半下移 gap,不画文字(文字位于横缝会被撕成两半)
+                bw = self.width()
                 p.save()
-                p.setClipRect(QRectF(0, 0, BALL_SIZE, BALL_SIZE / 2))
-                draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
+                p.setClipRect(QRectF(0, 0, bw, BALL_SIZE / 2))
+                draw_pokeball(p, QRectF(0, 0, bw, BALL_SIZE),
                               None, skin=self.skin)
                 p.restore()
                 p.save()
                 p.translate(0, self._gap)
-                p.setClipRect(QRectF(0, BALL_SIZE / 2, BALL_SIZE, BALL_SIZE / 2))
-                draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
+                p.setClipRect(QRectF(0, BALL_SIZE / 2, bw, BALL_SIZE / 2))
+                draw_pokeball(p, QRectF(0, 0, bw, BALL_SIZE),
                               None, skin=self.skin)
                 p.restore()
+            p.end()
+
+    class BorderOverlay(QWidget):
+        """窗口胶囊轮廓的主题色描边覆盖层(顶弧 + 两侧 + 底弧)。"""
+
+        def __init__(self, parent):
+            super().__init__(parent)
+            self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            self._color = QColor("#e3350d")
+
+        def set_color(self, color: str):
+            self._color = QColor(color)
+            self.update()
+
+        def paintEvent(self, ev):
+            p = QPainter(self)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            w, h = self.width(), self.height()
+            if w < 10 or h < 20:
+                p.end()
+                return
+            ins = 1.0  # 描边整体向内收 1px,完整落在窗口内
+            path = QPainterPath()
+            top_rect = QRectF(ins, ins, w - 2 * ins, BALL_SIZE - 2 * ins)
+            bot_rect = QRectF(ins, h - BALL_SIZE + ins, w - 2 * ins, BALL_SIZE - 2 * ins)
+            path.moveTo(ins, BALL_SIZE / 2)
+            path.arcTo(top_rect, 180, -180)           # 顶弧: 左中点 → 右中点
+            path.lineTo(w - ins, h - BALL_SIZE / 2)   # 右侧边
+            path.arcTo(bot_rect, 0, -180)             # 底弧: 右中点 → 左中点
+            path.lineTo(ins, BALL_SIZE / 2)           # 左侧边
+            p.setPen(QPen(self._color, 2))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawPath(path)
             p.end()
 
     class BallWindow(QWidget):
@@ -1046,8 +1085,8 @@ if HAVE_QT:
         quit_requested = Signal()
         skin_changed = Signal(str)
 
-        PANEL_GAP = 6
-        PANEL_WIDTH = 72  # 竖长窗口: 窗口宽度 = 面板宽度 ≈ 球宽(两半球吸附在面板上)
+        PANEL_GAP = 0   # 两半球与面板贴合(吸附)
+        PANEL_WIDTH = 200  # 竖长窗口宽度(不再受球宽限制); 球拉伸成同宽扁椭球
 
         def __init__(self):
             super().__init__(None,
@@ -1067,6 +1106,10 @@ if HAVE_QT:
 
             self._press_global = None
             self._moved = False
+
+            # 主题色描边覆盖层: 沿窗口胶囊轮廓(顶弧+侧边+底弧)画描边,置顶不拦鼠标
+            self._border = BorderOverlay(self)
+            self._border.hide()
 
             # 开合动画: 球上下分离 + 窗口上下展开面板,同一个进度属性驱动
             self._anim = QPropertyAnimation(self, b"open_progress", self)
@@ -1089,7 +1132,9 @@ if HAVE_QT:
                 if self._panel is not None:
                     self._panel.hide()
                 self._ball.gap = 0
+                self._ball.setFixedWidth(BALL_SIZE)
                 self._ball.move(0, 0)
+                self._border.hide()
                 if not self._wayland and self._base_pos is not None:
                     self.move(self._base_pos)
                 self.setFixedSize(BALL_SIZE, BALL_SIZE)
@@ -1108,10 +1153,14 @@ if HAVE_QT:
                 self.move(self._base_pos - QPoint(0, int(round(total / 2 * t))))
             self.setFixedSize(self.PANEL_WIDTH, max(h, BALL_SIZE))
             self._ball.gap = gap
+            self._ball.setFixedWidth(self.PANEL_WIDTH)
             self._ball.move(0, 0)
             if self._panel is not None:
                 self._panel.setVisible(True)
-                self._panel.move(0, m + BALL_SIZE // 2)  # 面板位于两半之间,窗口内位置恒定
+                self._panel.move(0, m + BALL_SIZE // 2)  # 面板紧贴两半球
+            self._border.setGeometry(0, 0, self.width(), self.height())
+            self._border.raise_()
+            self._border.show()
             self._update_mask()
 
         def set_skin(self, name: str):
@@ -1119,13 +1168,15 @@ if HAVE_QT:
                 return
             self._skin_name = name
             self._ball.set_skin(name)
-            self._update_mask()  # 超级球等皮肤有侧凸起,遮罩需扩展
+            self._update_mask()
+            self._border.set_color(SKINS[name].get("border", "#e3350d"))
             # 部分平台(X11/Windows)在 setMask 改变窗口形状后不会自动清除
             # 旧遮罩区域外的残留像素 —— 同步重绘,避免切换皮肤后旧皮肤滞留
             self._ball.repaint()
             self.repaint()
 
-        def _ball_shape_region(self, gap: int, ball_x: int, ball_y: int) -> QRegion:
+        def _ball_shape_region(self, gap: int, ball_x: int, ball_y: int,
+                               ball_w: int) -> QRegion:
             """球上下两半(半圆)+ 面板的遮罩区域,与绘制几何严格一致。
 
             注意: 不能用"内切椭圆"近似半圆 —— 椭圆在接缝处会缩成一点,
@@ -1137,14 +1188,14 @@ if HAVE_QT:
             # 确保遮罩始终不小于实际绘制(多出的透明区无害)。
             inflate = 1.0
             arc_rect = QRectF(ball_x - inflate, ball_y - inflate,
-                              BALL_SIZE + 2 * inflate, BALL_SIZE + 2 * inflate)
-            # 上半圆: 3 点 → 12 点 → 9 点(0°→180° 逆时针,经过 90°),弦沿 y=32
+                              ball_w + 2 * inflate, BALL_SIZE + 2 * inflate)
+            # 上半: 3 点 → 12 点 → 9 点(0°→180° 逆时针,经过 90°),弦沿 y=32
             top = QPainterPath()
             top.moveTo(ball_x, ball_y + BALL_SIZE / 2)
             top.arcTo(arc_rect, 0, 180)
             top.closeSubpath()
             region |= QRegion(top.toFillPolygon().toPolygon())
-            # 下半圆: 9 点 → 6 点 → 3 点(180°→360° 逆时针,经过 270°),整体下移 gap
+            # 下半: 9 点 → 6 点 → 3 点(180°→360° 逆时针,经过 270°),整体下移 gap
             bottom = QPainterPath()
             bottom.moveTo(ball_x, ball_y + BALL_SIZE / 2)
             bottom.arcTo(arc_rect, 180, 180)
@@ -1157,7 +1208,8 @@ if HAVE_QT:
             gap = int(round(self._ball.gap))
             ball_x = self._ball.x()
             ball_y = self._ball.y()
-            region = self._ball_shape_region(gap, ball_x, ball_y)
+            ball_w = self._ball.width()
+            region = self._ball_shape_region(gap, ball_x, ball_y, ball_w)
             if self._open_progress > 0 and self._panel is not None:
                 py = self._panel.y()
                 bottom = self.height() - py
@@ -1170,6 +1222,7 @@ if HAVE_QT:
             self._panel.setParent(self)
             self._panel_h = panel.sizeHint().height()
             self._panel.hide()
+            self._border.raise_()  # 描边永远在面板之上
 
         def panel_resized(self):
             if self._panel is None:
@@ -1305,22 +1358,39 @@ if HAVE_QT:
             v.setContentsMargins(12, 10, 12, 10)
             v.setSpacing(5)
 
-            # 窄面板表头: 只有居中标题(—收起/×退出按钮放不下,球点击收起、托盘/右键退出)
             hdr = QHBoxLayout()
-            hdr.addStretch(1)
+            hdr.setSpacing(6)
+            self._dot = QLabel("●")
+            self._dot.setProperty("cls", "dot")
             title = QLabel("TokenMon")
             title.setProperty("cls", "caption")
+            self._interval_label = QLabel(f"⟳ {self._interval:.0f}s")
+            self._interval_label.setProperty("cls", "caption")
+            btn_collapse = QPushButton("—")
+            btn_collapse.setProperty("cls", "btn")
+            btn_collapse.setToolTip("收起(回到精灵球)")
+            btn_collapse.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            btn_collapse.clicked.connect(self.collapsed.emit)
+            btn_quit = QPushButton("×")
+            btn_quit.setProperty("cls", "btn")
+            btn_quit.setToolTip("退出 TokenMon")
+            btn_quit.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            btn_quit.clicked.connect(self.quit_requested.emit)
+            hdr.addWidget(self._dot)
             hdr.addWidget(title)
             hdr.addStretch(1)
+            hdr.addWidget(self._interval_label)
+            hdr.addWidget(btn_collapse)
+            hdr.addWidget(btn_quit)
             v.addLayout(hdr)
 
-            # 三个主指标(竖排: 标签在上、数值在下,窄面板放不下左右布局);
-            # 按网关类型预隐藏拿不到的指标(deepseek/openrouter 无 token/缓存, litellm 无缓存)
+            # 三个主指标行; 按网关类型预隐藏拿不到的指标
+            # (deepseek/openrouter 无 token/缓存统计, litellm 无缓存字段)
             self._row_keys = ["total", "cache", "cost"]
             self._rows = {}
             for key, label in (("total", "Token 用量"),
                                ("cache", "缓存命中"), ("cost", "费用")):
-                self._rows[key] = self._add_stat(v, label)
+                self._rows[key] = self._add_row(v, label)
             self._hidden_by_config = set()
             gtype = str(self._cfg["gateway"].get("type", "")).lower()
             if gtype in ("deepseek", "openrouter"):
@@ -1348,21 +1418,18 @@ if HAVE_QT:
             self._btn_skin.setToolTip("切换精灵球皮肤(精灵球/大师球/超级球/高级球)")
             self._btn_skin.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self._btn_skin.clicked.connect(self._show_skins)
-            # 三个按钮竖排(窄面板放不下横排),撑满整行宽度
+            # 按钮右对齐: 右缘与上方参数行的数值右缘对齐; 状态文字单独一行
             for btn in (self._btn_details, self._btn_convs, self._btn_skin):
-                btn.setFixedHeight(22)
-                v.addWidget(btn)
-            # 状态行: 状态点 + 状态文字(省略显示,完整内容在 tooltip)
-            status_row = QHBoxLayout()
-            status_row.setSpacing(4)
-            self._dot = QLabel("●")
-            self._dot.setProperty("cls", "dot")
+                btn.setFixedHeight(22)  # 与参数行同高,行距一致
+            foot.addStretch(1)
+            foot.addWidget(self._btn_details)
+            foot.addWidget(self._btn_convs)
+            foot.addWidget(self._btn_skin)
+            v.addLayout(foot)
             self._status = QLabel("启动中…")
             self._status.setProperty("cls", "status")
             self._status.setToolTip("")
-            status_row.addWidget(self._dot)
-            status_row.addWidget(self._status, 1)
-            v.addLayout(status_row)
+            v.addWidget(self._status)
 
             # 最近对话面板(默认收起)
             self._convs_panel = QFrame()
@@ -1394,21 +1461,20 @@ if HAVE_QT:
             self._convs_panel.hide()
             v.addWidget(self._convs_panel)
 
-            self.setFixedWidth(72)  # 竖长窗口: 面板≈球宽,两半球吸附在面板上
+            self.setFixedWidth(200)  # 竖长窗口: 面板宽度 = 窗口宽度
 
-        def _add_stat(self, parent, label: str):
-            """竖排统计块: 标签在上、数值在下(窄面板布局)。"""
+        def _add_row(self, parent, label: str):
             row = QWidget()
-            v = QVBoxLayout(row)
-            v.setContentsMargins(0, 0, 0, 0)
-            v.setSpacing(0)
+            h = QHBoxLayout(row)
+            h.setContentsMargins(0, 0, 0, 0)
             lbl = QLabel(label)
-            lbl.setProperty("cls", "stat-label")
+            lbl.setProperty("cls", "row-label")
             val = QLabel("—")
-            val.setProperty("cls", "stat-value")
-            val.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            v.addWidget(lbl)
-            v.addWidget(val)
+            val.setProperty("cls", "row-value")
+            val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            h.addWidget(lbl)
+            h.addStretch(1)
+            h.addWidget(val)
             parent.addWidget(row)
             return row, val
 
@@ -1437,16 +1503,16 @@ if HAVE_QT:
             if self._balance_row is not None:
                 return
             row = QWidget()
-            v = QVBoxLayout(row)
-            v.setContentsMargins(0, 0, 0, 0)
-            v.setSpacing(0)
+            h = QHBoxLayout(row)
+            h.setContentsMargins(0, 0, 0, 0)
             lbl = QLabel("余额")
-            lbl.setProperty("cls", "stat-label")
+            lbl.setProperty("cls", "row-label")
             self._balance_val = QLabel("—")
-            self._balance_val.setProperty("cls", "stat-value")
-            self._balance_val.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            v.addWidget(lbl)
-            v.addWidget(self._balance_val)
+            self._balance_val.setProperty("cls", "row-value")
+            self._balance_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            h.addWidget(lbl)
+            h.addStretch(1)
+            h.addWidget(self._balance_val)
             # 插在最后一个可见主指标行之后(行可能被隐藏,不能写死索引)
             pos = 1 + sum(1 for k in self._row_keys
                           if self._rows[k][0].parent() is not None)
@@ -1545,7 +1611,7 @@ if HAVE_QT:
             # 状态在左、按钮在右: 超长时中间省略,完整内容放 tooltip
             self._status.setToolTip(text)
             self._status.setText(QFontMetrics(self._status.font()).elidedText(
-                text, Qt.TextElideMode.ElideMiddle, 45))
+                text, Qt.TextElideMode.ElideMiddle, 150))
             if error != self._dot_err:
                 self._dot_err = error
                 self._dot.setProperty("err", error)
