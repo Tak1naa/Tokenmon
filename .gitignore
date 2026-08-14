@@ -7,9 +7,12 @@ venv/
 
 # 构建产物
 packaging/rpmbuild/
+packaging/dist/
+packaging/build/
 dist/
 build/
 *.spec.bak
+.venv-win/
 
 # 编辑器
 .vscode/

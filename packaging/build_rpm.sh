@@ -22,8 +22,12 @@ cp ../tokenmon.py rpmbuild/SOURCES/tokenmon.py
 cp tokenmon.desktop rpmbuild/SOURCES/tokenmon.desktop
 cp tokenmon.service rpmbuild/SOURCES/tokenmon.service
 cp tokenmon.spec rpmbuild/SPECS/tokenmon.spec
+mkdir -p rpmbuild/tmp
 
-rpmbuild --define "_topdir $(pwd)/rpmbuild" --define "_sourcedir $(pwd)/rpmbuild/SOURCES" \
+# _tmppath 指向工作区: 避免写 /var/tmp(容器/沙箱可能只读)
+rpmbuild --define "_topdir $(pwd)/rpmbuild" \
+         --define "_sourcedir $(pwd)/rpmbuild/SOURCES" \
+         --define "_tmppath $(pwd)/rpmbuild/tmp" \
          -bb rpmbuild/SPECS/tokenmon.spec
 
 echo

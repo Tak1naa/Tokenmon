@@ -1,0 +1,57 @@
+name: build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest
+      - name: 单元测试(解析/配置/格式化/抓取,无需 PySide6)
+        run: python -m pytest tests/ -q
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 安装依赖
+        run: pip install pyside6 pyinstaller
+      - name: 构建 tokenmon.exe
+        run: python -m PyInstaller --noconfirm --distpath dist --workpath build packaging/tokenmon_pyinstaller.spec
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: tokenmon-windows
+          path: dist/tokenmon
+      - name: 发布 GitHub Release(仅打 tag 时)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/tokenmon/tokenmon.exe
+
+  linux-rpm:
+    needs: test
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装 rpm-build
+        run: dnf install -y rpm-build
+      - name: 构建 RPM
+        run: cd packaging && bash build_rpm.sh
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: tokenmon-linux-rpm
+          path: packaging/rpmbuild/RPMS/**/*.rpm

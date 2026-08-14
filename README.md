@@ -92,7 +92,18 @@ pip install pyside6
 - 调试抓取:`python tokenmon.py --once`
 - 单实例运行,重复启动会静默退出
 - 托盘图标原生支持;关闭主界面 = 收起,托盘菜单/精灵球右键才是退出
-- PyInstaller 打包(可选):`pip install pyinstaller && pyinstaller -F -w -n tokenmon tokenmon.py`
+
+## 打包发布
+
+| 目标 | 方式 | 产物 |
+|---|---|---|
+| Windows | 在 Windows 上双击 `packaging/build_win.bat`(自动建 venv、装依赖、PyInstaller 构建) | `dist/tokenmon/tokenmon.exe` |
+| Linux Fedora | `cd packaging && bash build_rpm.sh` | `packaging/rpmbuild/RPMS/.../tokenmon-*.rpm`(`sudo dnf install` 自动带依赖) |
+| Linux 任意发行版 | `./install.sh` | 装到 `~/.local`,免 sudo |
+
+- **GitHub Actions CI**:打 `v*` 标签自动跑测试并构建 Windows exe + Linux RPM(`.github/workflows/build.yml`),exe 自动挂到 Release
+- **图标**:`packaging/icons/tokenmon.ico`(16..256 多尺寸,由球体绘制生成)
+- 注意:PyInstaller 不支持交叉编译,Windows exe 必须在 Windows(或 CI)上构建;构建配置见 `packaging/tokenmon_pyinstaller.spec`(已排除 Qt 未用模块,onedir 约 200MB)
 
 ## 开发与测试
 
