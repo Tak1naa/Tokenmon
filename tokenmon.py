@@ -229,6 +229,26 @@ def load_config(path: Path) -> dict:
     return cfg
 
 
+def _open_with_default_app(path: Path) -> str | None:
+    """用系统默认方式打开文件/目录(文本编辑器/文件管理器);失败返回错误信息。"""
+    try:
+        if os.name == "nt":
+            os.startfile(str(path))  # type: ignore[attr-defined]
+            return None
+        if path.is_file():
+            import shlex
+            import subprocess
+            editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+            if editor:
+                subprocess.Popen([*shlex.split(editor), str(path)])
+                return None
+        import subprocess
+        subprocess.Popen(["xdg-open", str(path)])
+        return None
+    except Exception as exc:
+        return str(exc)
+
+
 # --------------------------------------------------------------------------
 # 数据模型
 # --------------------------------------------------------------------------
@@ -1340,10 +1360,12 @@ if HAVE_QT:
         collapsed = Signal()
         size_changed = Signal()
         skin_changed = Signal(str)
+        config_reload_requested = Signal()
 
-        def __init__(self, cfg: dict, has_logs: bool = True):
+        def __init__(self, cfg: dict, has_logs: bool = True, config_path=None):
             super().__init__()
             self._cfg = cfg
+            self._config_path = config_path or CONFIG_PATH
             self._interval = cfg["gateway"]["refresh_seconds"]
             self._detail_cache = {}
             self._dot_err = False
@@ -1412,27 +1434,35 @@ if HAVE_QT:
 
             foot = QHBoxLayout()
             foot.setSpacing(8)
-            self._btn_details = QPushButton("详情 ▾")
+            # 四个按钮(窄面板放不下带 ▾ 的版本,所有按钮都会弹菜单)
+            self._btn_details = QPushButton("详情")
             self._btn_details.setProperty("cls", "btn")
             self._btn_details.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self._btn_details.clicked.connect(self._show_details)
-            self._btn_convs = QPushButton("对话 ▾")
+            self._btn_convs = QPushButton("对话")
             self._btn_convs.setProperty("cls", "btn")
             self._btn_convs.setToolTip("最近十次对话的 prompt 与 token 用量")
             self._btn_convs.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self._btn_convs.clicked.connect(self._toggle_convs)
-            self._btn_skin = QPushButton("皮肤 ▾")
+            self._btn_skin = QPushButton("皮肤")
             self._btn_skin.setProperty("cls", "btn")
             self._btn_skin.setToolTip("切换精灵球皮肤(精灵球/大师球/超级球/高级球)")
             self._btn_skin.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self._btn_skin.clicked.connect(self._show_skins)
+            self._btn_settings = QPushButton("设置")
+            self._btn_settings.setProperty("cls", "btn")
+            self._btn_settings.setToolTip("编辑配置 / 打开配置目录 / 重载配置")
+            self._btn_settings.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self._btn_settings.clicked.connect(self._show_settings)
             # 按钮右对齐: 右缘与上方参数行的数值右缘对齐; 状态文字单独一行
-            for btn in (self._btn_details, self._btn_convs, self._btn_skin):
+            for btn in (self._btn_details, self._btn_convs, self._btn_skin,
+                        self._btn_settings):
                 btn.setFixedHeight(22)  # 与参数行同高,行距一致
             foot.addStretch(1)
             foot.addWidget(self._btn_details)
             foot.addWidget(self._btn_convs)
             foot.addWidget(self._btn_skin)
+            foot.addWidget(self._btn_settings)
             v.addLayout(foot)
             self._status = QLabel("启动中…")
             self._status.setProperty("cls", "status")
@@ -1575,6 +1605,34 @@ if HAVE_QT:
                               submenu=False)
             menu.exec(self._btn_skin.mapToGlobal(QPoint(0, self._btn_skin.height())))
 
+        def _show_settings(self):
+            """设置二级菜单: 编辑配置 / 打开配置目录 / 重载配置(热生效)。"""
+            menu = QMenu(self)
+            act_edit = menu.addAction("编辑配置…")
+            act_edit.setToolTip(str(self._config_path))
+            act_edit.triggered.connect(self._edit_config)
+            act_dir = menu.addAction("打开配置目录")
+            act_dir.triggered.connect(self._open_config_dir)
+            menu.addSeparator()
+            menu.addAction("重载配置", self._reload_config)
+            menu.exec(self._btn_settings.mapToGlobal(
+                QPoint(0, self._btn_settings.height())))
+
+        def _edit_config(self):
+            err = _open_with_default_app(self._config_path)
+            if err:
+                self.set_status(f"打开编辑器失败: {err}", error=True)
+            else:
+                self.set_status("已打开编辑器,保存后点「重载配置」生效")
+
+        def _open_config_dir(self):
+            err = _open_with_default_app(self._config_path.parent)
+            if err:
+                self.set_status(f"打开目录失败: {err}", error=True)
+
+        def _reload_config(self):
+            self.config_reload_requested.emit()
+
         def set_skin_name(self, name: str):
             self._skin_name = name if name in SKINS else DEFAULT_SKIN
 
@@ -1625,6 +1683,23 @@ if HAVE_QT:
                 self._dot.setProperty("err", error)
                 self._dot.style().unpolish(self._dot)
                 self._dot.style().polish(self._dot)
+
+        def apply_config(self, cfg: dict, has_logs: bool):
+            """热重载后更新按配置决定的面板状态(行显隐/对话入口)。"""
+            self._cfg = cfg
+            self._interval = cfg["gateway"]["refresh_seconds"]
+            new_hidden = set()
+            gtype = str(cfg["gateway"].get("type", "")).lower()
+            if gtype in ("deepseek", "openrouter"):
+                new_hidden |= {"total", "cache"}
+            elif gtype == "litellm":
+                new_hidden |= {"cache"}
+            for key in self._row_keys:
+                if key in new_hidden:
+                    self._set_row_visible(key, False)
+            self._hidden_by_config = new_hidden
+            # 数据驱动的行(如 custom 的实际数据)会在下一次 update 自动恢复显隐
+            self._btn_convs.setVisible(has_logs)
 
         def update(self, usage: Usage, session_tokens, session_cost, rate):
             self._usage_seen = True
@@ -1703,9 +1778,10 @@ if HAVE_QT:
         logs_error = Signal(str)
 
     class Controller(QObject):
-        def __init__(self, cfg: dict):
+        def __init__(self, cfg: dict, config_path=None):
             super().__init__()
             self._cfg = cfg
+            self._config_path = config_path
             gw = cfg["gateway"]
             self._interval = gw["refresh_seconds"]
             self._logs_interval = gw["logs_refresh_seconds"]
@@ -1738,12 +1814,13 @@ if HAVE_QT:
             has_logs = (gtype0 == "litellm"
                         or (gtype0 == "custom" and bool(str(gw0.get("logs_url", "")).strip()))
                         or base0.startswith("mock://"))
-            self._panel = MainPanel(cfg, has_logs=has_logs)
+            self._panel = MainPanel(cfg, has_logs=has_logs, config_path=config_path)
             self._ball.attach_panel(self._panel)
             self._panel.quit_requested.connect(self.quit)
             self._panel.collapsed.connect(self._ball.close_panel)
             self._panel.size_changed.connect(self._ball.panel_resized)
             self._panel.skin_changed.connect(self._on_skin_changed)
+            self._panel.config_reload_requested.connect(self.reload_config)
             self._panel.set_skin_name(self._skin_name)
 
             self._tray_ok = False
@@ -1917,10 +1994,30 @@ if HAVE_QT:
             self._panel.set_logs_status("无数据")
             self._panel.set_conversations([])
 
+        def reload_config(self):
+            """重新读取配置文件并热生效(网关类型/间隔/字段映射等,无需重启)。"""
+            path = self._config_path if self._config_path is not None else CONFIG_PATH
+            try:
+                cfg = load_config(path)
+            except Exception as exc:
+                self._panel.set_status(f"重载失败: {exc}", error=True)
+                return
+            self._cfg = cfg
+            gw = cfg["gateway"]
+            self._interval = gw["refresh_seconds"]
+            self._logs_interval = gw["logs_refresh_seconds"]
+            gtype = str(gw.get("type", "")).lower()
+            base = str(gw.get("base_url", ""))
+            has_logs = (gtype == "litellm"
+                        or (gtype == "custom" and bool(str(gw.get("logs_url", "")).strip()))
+                        or base.startswith("mock://"))
+            self._panel.apply_config(cfg, has_logs)
+            self._panel.set_status(f"配置已重载({path.name})")
+
     # ----------------------------------------------------------------------
     # GUI 入口
     # ----------------------------------------------------------------------
-    def run_gui(cfg: dict, smoke: int = 0) -> int:
+    def run_gui(cfg: dict, smoke: int = 0, config_path=None) -> int:
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
         app = QApplication(sys.argv)
@@ -1936,7 +2033,7 @@ if HAVE_QT:
             _safe_print("TokenMon 已在运行。")
             return 0
 
-        ctrl = Controller(cfg)
+        ctrl = Controller(cfg, config_path)
         ctrl._lock = lock  # 保持引用,防止锁被回收
         ctrl.start()
         ctrl.show_ball()
@@ -2026,7 +2123,7 @@ def main():
         _safe_print("           Fedora:  sudo dnf install python3-pyside6", file=sys.stderr)
         return 1
 
-    return run_gui(cfg, args.smoke)
+    return run_gui(cfg, args.smoke, path)
 
 
 if __name__ == "__main__":
