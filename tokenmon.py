@@ -918,9 +918,11 @@ if HAVE_QT:
                 font = QFont()
                 font.setBold(True)
                 size = 13
-                while size >= 8:
+                # 顶部半圆的实际可用宽度(球径减去两侧边距),比固定 48px 更宽松
+                max_w = max(40.0, 2 * r - 10)
+                while size >= 6:  # 最小 6pt,长金额/长数字也能完整放下
                     font.setPixelSize(size)
-                    if QFontMetrics(font).horizontalAdvance(text) <= 48:
+                    if QFontMetrics(font).horizontalAdvance(text) <= max_w:
                         break
                     size -= 1
                 if len(_FONT_CACHE) < 64:
@@ -1089,6 +1091,10 @@ if HAVE_QT:
             self._skin_name = name
             self._ball.set_skin(name)
             self._update_mask()  # 超级球等皮肤有侧凸起,遮罩需扩展
+            # 部分平台(X11/Windows)在 setMask 改变窗口形状后不会自动清除
+            # 旧遮罩区域外的残留像素 —— 同步重绘,避免切换皮肤后旧皮肤滞留
+            self._ball.repaint()
+            self.repaint()
 
         def _ball_shape_region(self, gap: int, ball_y: int) -> QRegion:
             """球两半(半圆)+ 皮肤侧凸起的遮罩区域,与绘制几何严格一致。
@@ -1642,6 +1648,7 @@ if HAVE_QT:
             self._ball.set_skin(name)
             self._panel.set_skin_name(name)
             if self._tray_ok:
+                self._tray.setIcon(QIcon())  # 先清空再设置,Windows 托盘图标缓存才会刷新
                 self._tray.setIcon(make_pokeball_icon(name))
             try:
                 (CONFIG_DIR / "skin").write_text(name + "\n", encoding="utf-8")
