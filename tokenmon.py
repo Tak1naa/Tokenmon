@@ -1361,6 +1361,7 @@ if HAVE_QT:
         size_changed = Signal()
         skin_changed = Signal(str)
         config_reload_requested = Signal()
+        refresh_requested = Signal()
 
         def __init__(self, cfg: dict, has_logs: bool = True, config_path=None):
             super().__init__()
@@ -1389,18 +1390,19 @@ if HAVE_QT:
             v.setSpacing(5)
 
             hdr = QHBoxLayout()
-            hdr.setSpacing(6)
+            hdr.setSpacing(4)
             self._dot = QLabel("●")
             self._dot.setProperty("cls", "dot")
             title = QLabel("TokenMon")
             title.setProperty("cls", "caption")
             self._interval_label = QLabel(f"⟳ {self._interval:.0f}s")
             self._interval_label.setProperty("cls", "caption")
-            btn_collapse = QPushButton("—")
-            btn_collapse.setProperty("cls", "btn")
-            btn_collapse.setToolTip("收起(回到精灵球)")
-            btn_collapse.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn_collapse.clicked.connect(self.collapsed.emit)
+            # 「⟳」= 手动立即刷新(收起改由点击精灵球 / Esc 完成)
+            self._btn_refresh = QPushButton("⟳")
+            self._btn_refresh.setProperty("cls", "btn")
+            self._btn_refresh.setToolTip(f"立即手动刷新(自动间隔 {self._interval:.0f}s)")
+            self._btn_refresh.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self._btn_refresh.clicked.connect(self.refresh_requested.emit)
             btn_quit = QPushButton("×")
             btn_quit.setProperty("cls", "btn")
             btn_quit.setToolTip("退出 TokenMon")
@@ -1410,7 +1412,7 @@ if HAVE_QT:
             hdr.addWidget(title)
             hdr.addStretch(1)
             hdr.addWidget(self._interval_label)
-            hdr.addWidget(btn_collapse)
+            hdr.addWidget(self._btn_refresh)
             hdr.addWidget(btn_quit)
             v.addLayout(hdr)
 
@@ -1821,6 +1823,7 @@ if HAVE_QT:
             self._panel.size_changed.connect(self._ball.panel_resized)
             self._panel.skin_changed.connect(self._on_skin_changed)
             self._panel.config_reload_requested.connect(self.reload_config)
+            self._panel.refresh_requested.connect(self.refresh_now)
             self._panel.set_skin_name(self._skin_name)
 
             self._tray_ok = False
@@ -1993,6 +1996,26 @@ if HAVE_QT:
                 return
             self._panel.set_logs_status("无数据")
             self._panel.set_conversations([])
+
+        def refresh_now(self):
+            """手动立即刷新: 后台线程抓一次用量 + 对话列表,不阻塞界面。"""
+            if self._stop.is_set():
+                return
+            self._panel.set_status("正在刷新…")
+            threading.Thread(target=self._fetch_once,
+                             name="tokenmon-refresh", daemon=True).start()
+
+        def _fetch_once(self):
+            try:
+                usage = fetch_usage(self._cfg["gateway"])
+                self._bridge.usage_ready.emit(usage)
+            except Exception as exc:
+                self._bridge.usage_error.emit(str(exc))
+            try:
+                convs = fetch_conversations(self._cfg["gateway"])
+                self._bridge.logs_ready.emit(convs)
+            except Exception as exc:
+                self._bridge.logs_error.emit(str(exc))
 
         def reload_config(self):
             """重新读取配置文件并热生效(网关类型/间隔/字段映射等,无需重启)。"""
