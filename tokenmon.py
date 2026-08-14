@@ -1363,13 +1363,17 @@ if HAVE_QT:
             self._btn_skin.setToolTip("切换精灵球皮肤(精灵球/大师球/超级球/高级球)")
             self._btn_skin.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self._btn_skin.clicked.connect(self._show_skins)
+            # 按钮右对齐: 右缘与上方参数行的数值右缘对齐(12+296=308)
+            for btn in (self._btn_details, self._btn_convs, self._btn_skin):
+                btn.setFixedHeight(22)  # 与参数行同高,行距一致
+            self._status = QLabel("启动中…")
+            self._status.setProperty("cls", "status")
+            self._status.setToolTip("")
+            foot.addWidget(self._status)
+            foot.addStretch(1)
             foot.addWidget(self._btn_details)
             foot.addWidget(self._btn_convs)
             foot.addWidget(self._btn_skin)
-            foot.addStretch(1)
-            self._status = QLabel("启动中…")
-            self._status.setProperty("cls", "status")
-            foot.addWidget(self._status)
             v.addLayout(foot)
 
             # 最近对话面板(默认收起)
@@ -1549,7 +1553,10 @@ if HAVE_QT:
             self._convs_status.setText(text)
 
         def set_status(self, text: str, error: bool = False):
-            self._status.setText(text)
+            # 状态在左、按钮在右: 超长时中间省略,完整内容放 tooltip
+            self._status.setToolTip(text)
+            self._status.setText(QFontMetrics(self._status.font()).elidedText(
+                text, Qt.TextElideMode.ElideMiddle, 120))
             if error != self._dot_err:
                 self._dot_err = error
                 self._dot.setProperty("err", error)
