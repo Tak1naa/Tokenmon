@@ -904,14 +904,15 @@ if HAVE_QT:
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawEllipse(QPointF(cx, cy), r, r)
 
-        # 顶部徽记(大师球的 M): 画在数据文字上方,不与按钮/文字重叠
+        # 顶部徽记(大师球的 M): 顶部小徽标。徽记区只留 9px ——
+        # 数据文字区必须与普通球等高,字号才会一致(同一文字在所有球上同字号)
         emblem = skin.get("emblem")
-        emblem_h = r - band_h / 2 - 13.0
+        emblem_h = r - band_h / 2 - 16.5
         if emblem:
             ef = QFont()
             ef.setBold(True)
-            es = 14
-            while es >= 8:
+            es = 9
+            while es >= 7:
                 ef.setPixelSize(es)
                 if QFontMetrics(ef).horizontalAdvance(emblem) <= 2 * r - 8:
                     break
@@ -933,14 +934,15 @@ if HAVE_QT:
             p.drawRoundedRect(QRectF(cx + r - bdx - bw, cy - r + bdy, bw, bh), 2, 2)
 
         if text:
-            # 有徽记的球(大师球)文字下移避开徽记,字号起点也更小
+            # 有徽记的球(大师球)文字区下移避开徽记,但高度按 16.5px 起步 ——
+            # 字号适配只由文字宽度决定,与皮肤无关(各球同文字同字号)
             text_area = QRectF(cx - r, cy - r + (emblem_h + 1 if emblem else 0),
-                               2 * r, (13.0 if emblem else r - band_h / 2))
-            font = _FONT_CACHE.get((text, bool(emblem)))
+                               2 * r, (16.5 if emblem else r - band_h / 2))
+            font = _FONT_CACHE.get(text)
             if font is None:
                 font = QFont()
                 font.setBold(True)
-                size = 11 if emblem else 13
+                size = 13
                 # 顶部半圆的实际可用宽度(球径减去两侧边距),比固定 48px 更宽松
                 max_w = max(40.0, 2 * r - 10)
                 while size >= 6:  # 最小 6pt,长金额/长数字也能完整放下
@@ -949,7 +951,7 @@ if HAVE_QT:
                         break
                     size -= 1
                 if len(_FONT_CACHE) < 64:
-                    _FONT_CACHE[(text, bool(emblem))] = font
+                    _FONT_CACHE[text] = font
             p.setFont(font)
             p.setPen(QColor(0, 0, 0, 90))
             p.drawText(text_area.translated(0, 1), Qt.AlignmentFlag.AlignCenter, text)
