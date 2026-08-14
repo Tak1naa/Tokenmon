@@ -11,11 +11,12 @@ from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtSvg import QSvgRenderer
 
 ICONS = Path(__file__).resolve().parent.parent / "src-tauri" / "icons"
-SVG = Path(__file__).resolve().parent.parent / "src" / "skins" / "ball_pokeball.svg"
+SKINS = Path(__file__).resolve().parent.parent / "src" / "skins"
+SKIN_NAMES = ["pokeball", "master", "great", "ultra"]
 
 
-def render(size: int, path: Path):
-    renderer = QSvgRenderer(str(SVG))
+def render(size: int, path: Path, svg: Path):
+    renderer = QSvgRenderer(str(svg))
     img = QImage(size, size, QImage.Format.Format_ARGB32)
     img.fill(QColor(0, 0, 0, 0))
     p = QPainter(img)
@@ -28,9 +29,14 @@ def render(size: int, path: Path):
 
 def main():
     ICONS.mkdir(parents=True, exist_ok=True)
-    render(32, ICONS / "32x32.png")
-    render(128, ICONS / "128x128.png")
-    render(256, ICONS / "128x128@2x.png")
+    render(32, ICONS / "32x32.png", SKINS / "ball_pokeball.svg")
+    render(128, ICONS / "128x128.png", SKINS / "ball_pokeball.svg")
+    render(256, ICONS / "128x128@2x.png", SKINS / "ball_pokeball.svg")
+    # 托盘皮肤图标(皮肤联动用)
+    tray_dir = ICONS / "skins"
+    tray_dir.mkdir(exist_ok=True)
+    for skin in SKIN_NAMES:
+        render(32, tray_dir / (skin + ".png"), SKINS / ("ball_" + skin + ".svg"))
     # ico: 用 Qt 生成多尺寸 ICO 需要 QtGui 的 QImageWriter ICO 支持, 直接写 PNG 由
     # tauri 打包时生成 ico; 这里保留 ImageMagick 生成的多尺寸 ico
     import subprocess

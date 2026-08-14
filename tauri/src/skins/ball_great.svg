@@ -59,12 +59,7 @@ font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal"
 <circle cx="128" cy="128" r="62.5"/>
 </g>
 
-<g fill="#e3350d" fill-opacity="1" stroke="none" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-<path vector-effect="none" fill-rule="evenodd" d="M69,85.5 C69,84.3954 69.8954,83.5 71,83.5 L77,83.5 C78.1046,83.5 79,84.3954 79,85.5 L79,89.5 C79,90.6046 78.1046,91.5 77,91.5 L71,91.5 C69.8954,91.5 69,90.6046 69,89.5 L69,85.5"/>
-<path vector-effect="none" fill-rule="evenodd" d="M177,85.5 C177,84.3954 177.895,83.5 179,83.5 L185,83.5 C186.105,83.5 187,84.3954 187,85.5 L187,89.5 C187,90.6046 186.105,91.5 185,91.5 L179,91.5 C177.895,91.5 177,90.6046 177,89.5 L177,85.5"/>
-</g>
+<g fill="#e3350d" fill-opacity="1" stroke="none" transform="matrix(1,0,0,1,0,0)" ><rect x="72" y="83.5" width="38" height="9" rx="3"/><rect x="146" y="83.5" width="38" height="9" rx="3"/></g>
 
 <g fill="none" stroke="#000000" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
 font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 

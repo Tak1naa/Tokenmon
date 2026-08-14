@@ -202,6 +202,25 @@ fn set_always_on_top(
     Ok(())
 }
 
+/// 托盘图标随皮肤联动(4 款皮肤 PNG 嵌入二进制)
+#[tauri::command]
+fn set_tray_skin(app: tauri::AppHandle, skin: String) -> Result<(), String> {
+    let bytes: &[u8] = match skin.as_str() {
+        "master" => include_bytes!("../icons/skins/master.png"),
+        "great" => include_bytes!("../icons/skins/great.png"),
+        "ultra" => include_bytes!("../icons/skins/ultra.png"),
+        _ => include_bytes!("../icons/skins/pokeball.png"),
+    };
+    let img = image::load_from_memory(bytes).map_err(|e| e.to_string())?;
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let icon = tauri::image::Image::new_owned(rgba.into_raw(), w, h);
+    if let Some(tray) = app.tray_by_id("main") {
+        tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn hide_ball(window: WebviewWindow) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())
@@ -380,12 +399,22 @@ pub fn run() {
                             let _ = win.eval(
                                 "window.__TAURI__.core.invoke('tm_report', {rect: JSON.stringify(document.querySelector('#btns [data-act=details]').getBoundingClientRect())});",
                             );
+                            std::thread::sleep(sleep(500));
+                            // 1.5) eval 触发右键菜单(contextmenu 事件)
+                            let _ = win.eval(
+                                "window.__TAURI__.core.invoke('tm_report', {rect: 'CTX-EVAL'}); document.getElementById('stage').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, clientX: 20, clientY: 20}));",
+                            );
+                            std::thread::sleep(sleep(500));
+                            // 1.6) 报告右键菜单状态
+                            let _ = win.eval(
+                                "window.__TAURI__.core.invoke('tm_report', {rect: 'CTX-MENU:' + document.getElementById('menu').hidden});",
+                            );
                             std::thread::sleep(sleep(600));
-                            // 1.5) eval 点击详情按钮
+                            // 1.7) eval 点击详情按钮
                             let _ = win.eval(
                                 "window.__TAURI__.core.invoke('tm_report', {rect: 'CLICK-EVAL'}); document.querySelector('#btns [data-act=details]').click();",
                             );
-                            std::thread::sleep(sleep(1600)); // 等交互脚本点击
+                            std::thread::sleep(sleep(1600));
                             // 2) 报告菜单状态
                             let _ = win.eval(
                                 "window.__TAURI__.core.invoke('tm_report', {rect: 'MENU:' + document.getElementById('menu').hidden});",
@@ -412,6 +441,7 @@ pub fn run() {
             open_config_dir,
             reload_config,
             set_always_on_top,
+            set_tray_skin,
             hide_ball,
             quit,
         ])

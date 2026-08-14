@@ -52,16 +52,12 @@ async function sf() {
   return appWindow.scaleFactor();
 }
 
-async function setWindow(w, h, x, y, sync = false) {
-  const s = appWindow.setSize(new LogicalSize(Math.round(w), Math.round(h)));
-  const p =
-    x !== undefined && y !== undefined
-      ? appWindow.setPosition(new LogicalPosition(Math.round(x), Math.round(y)))
-      : null;
-  // 动画帧 fire-and-forget(不阻塞); 最后一帧/收尾必须 await 保证最终状态
-  if (sync) {
-    await s;
-    if (p) await p;
+async function setWindow(w, h, x, y) {
+  // 每帧等待 resize 完成再进入下一帧: 合成器会合并连续 resize,
+  // fire-and-forget 会导致动画只剩首尾两帧(看起来没有动画)
+  await appWindow.setSize(new LogicalSize(Math.round(w), Math.round(h)));
+  if (x !== undefined && y !== undefined) {
+    await appWindow.setPosition(new LogicalPosition(Math.round(x), Math.round(y)));
   }
 }
 
@@ -129,7 +125,7 @@ async function drawClosed() {
   await setWindow(BALL, BALL, pos.x, pos.y, true);
 }
 
-async function drawOpen(p, sync = false) {
+async function drawOpen(p) {
   const panelH = state.panelH;
   const gap = Math.round(panelH * p);
   if (state.docked) {
@@ -149,7 +145,7 @@ async function drawOpen(p, sync = false) {
     if (state.docked === "right") halfStyle("translateY(0px)", "translateY(" + gap + "px)");
     else halfStyle("translateY(-" + gap + "px)", "translateY(0px)");
     const pos = windowPosFromBase(state.basePos, w, h);
-    await setWindow(w, h, pos.x, pos.y, sync);
+    await setWindow(w, h, pos.x, pos.y);
   } else {
     const w = PANEL_W;
     const h = BALL + Math.round(panelH * p);
@@ -166,7 +162,7 @@ async function drawOpen(p, sync = false) {
     panel.style.display = p > 0 ? "block" : "none";
     halfStyle("translateY(0px)", "translateY(" + gap + "px)"); // 下半容器从 top:32 下移
     const pos = windowPosFromBase(state.basePos, w, h);
-    await setWindow(w, h, pos.x, pos.y, sync);
+    await setWindow(w, h, pos.x, pos.y);
   }
   // 注意: 动画期间不读回 outerPosition 更新 basePos —— X11 下 outerPosition
   // 含 CSD 装饰偏移, 每帧读回会导致窗口逐帧漂移(球向上跳)。
@@ -194,9 +190,9 @@ function animateTo(target) {
     const t = Math.min(1, (performance.now() - t0) / duration);
     const p = start + (end - start) * easeOutCubic(t);
     const last = t >= 1;
-    await drawOpen(p, last);
+    await drawOpen(p);
     if (!last) {
-      state.animTimer = setTimeout(frame, 14);
+      state.animTimer = setTimeout(frame, 22);
     } else {
       state.animTimer = null;
       state.open = target;
@@ -330,10 +326,10 @@ function updateBallText() {
   const el = $("ball-text");
   const t = ballTextValue();
   el.textContent = t;
-  // 字号自适应: 球 64px 显示尺寸, 上半球可用宽度 ~56px
-  let size = 17;
+  // 字号自适应: 球内尽量大(上半球可用宽度 ~54px)
+  let size = 22;
   el.style.fontSize = size + "px";
-  while (size > 7 && el.scrollWidth > 52) {
+  while (size > 8 && el.scrollWidth > 54) {
     size -= 1;
     el.style.fontSize = size + "px";
   }
@@ -350,8 +346,8 @@ function applyUsage(u) {
   const rows = {
     total: [u.total, fmtTokens],
     cache: [u.cache_hit, fmtTokens],
-    cost: [u.cost, (v) => fmtMoney(v, u.currency)],
-    balance: [u.balance, (v) => fmtMoney(v, u.currency)],
+    cost: [u.cost, (v) => fmtMoneyShort(v, u.currency)],
+    balance: [u.balance, (v) => fmtMoneyShort(v, u.currency)],
   };
   for (const [key, [v, fmt]] of Object.entries(rows)) {
     const row = document.querySelector('.row[data-key="' + key + '"]');
@@ -426,6 +422,7 @@ function setSkin(name) {
   state.skin = name;
   $("half-top").src = "skins/ball_" + name + ".svg";
   $("half-bot").src = "skins/ball_" + name + ".svg";
+  invoke("set_tray_skin", { skin: name }).catch(() => {});
   if (state.open) drawOpen(1);
   else drawClosed();
 }
