@@ -392,6 +392,9 @@ pub fn run() {
                     capture_window(&handle, "/tmp/tmtest/shot_closed.png");
                     std::thread::sleep(sleep(800));
                     let _ = handle.emit("tm-toggle", ()); // 展开
+                    // 动画中间帧截图(过渡进行中)
+                    std::thread::sleep(sleep(110));
+                    capture_window(&handle, "/tmp/tmtest/shot_anim_mid.png");
                     if std::env::var("TOKENMON_SMOKE_CLICK").is_ok() {
                         std::thread::sleep(sleep(600));
                         if let Some(win) = handle.get_webview_window("main") {

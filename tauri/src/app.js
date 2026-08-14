@@ -125,7 +125,7 @@ async function drawClosed() {
   await setWindow(BALL, BALL, pos.x, pos.y, true);
 }
 
-async function drawOpen(p) {
+async function drawOpen(p, applyMotion = true) {
   const panelH = state.panelH;
   const gap = Math.round(panelH * p);
   if (state.docked) {
@@ -140,10 +140,12 @@ async function drawOpen(p) {
     panel.style.left = BALL + "px";
     panel.style.top = "0px";
     panel.style.width = PANEL_W + "px";
-    panel.style.height = h + "px";
+    panel.style.height = applyMotion ? h + "px" : panel.style.height;
     panel.style.display = p > 0 ? "block" : "none";
-    if (state.docked === "right") halfStyle("translateY(0px)", "translateY(" + gap + "px)");
-    else halfStyle("translateY(-" + gap + "px)", "translateY(0px)");
+    if (applyMotion) {
+      if (state.docked === "right") halfStyle("translateY(0px)", "translateY(" + gap + "px)");
+      else halfStyle("translateY(-" + gap + "px)", "translateY(0px)");
+    }
     const pos = windowPosFromBase(state.basePos, w, h);
     await setWindow(w, h, pos.x, pos.y);
   } else {
@@ -158,70 +160,98 @@ async function drawOpen(p) {
     panel.style.left = "0px";
     panel.style.top = BALL / 2 + "px";
     panel.style.width = PANEL_W + "px";
-    panel.style.height = Math.round(panelH * p) + "px";
+    panel.style.height = applyMotion ? Math.round(panelH * p) + "px" : panel.style.height;
     panel.style.display = p > 0 ? "block" : "none";
-    halfStyle("translateY(0px)", "translateY(" + gap + "px)"); // 下半容器从 top:32 下移
+    if (applyMotion) {
+      halfStyle("translateY(0px)", "translateY(" + gap + "px)"); // 下半容器从 top:32 下移
+    }
     const pos = windowPosFromBase(state.basePos, w, h);
     await setWindow(w, h, pos.x, pos.y);
   }
   // 注意: 动画期间不读回 outerPosition 更新 basePos —— X11 下 outerPosition
   // 含 CSD 装饰偏移, 每帧读回会导致窗口逐帧漂移(球向上跳)。
-  // 位置同步移到 animateTo 完成后进行一次。
+  // 位置同步由 open/close 流程结束时统一进行。
 }
 
 // ---------------------------------------------------------------------------
 // 开合动画
 // ---------------------------------------------------------------------------
 
-function easeOutCubic(t) {
-  return 1 - Math.pow(1 - t, 3);
+// 开合动画: GTK/Linux 合成器会合并连续窗口 resize(逐帧 resize 只剩首尾帧),
+// 因此改为「窗口一次到位 + 内容 CSS transition 平滑过渡」:
+// 展开时窗口立即变为最终尺寸(球心保持不动), 球体分离与面板展开由
+// CSS transition(0.28s easeOut)驱动, 平滑且不会被合成器吞掉。
+const OPEN_MS = 280;
+const OPEN_EASE = "cubic-bezier(0.33, 1, 0.68, 1)"; // easeOutCubic 近似
+
+function setHalfTransition(on) {
+  const t = on ? ("transform " + OPEN_MS + "ms " + OPEN_EASE) : "none";
+  document.querySelector(".c-top").style.transition = t;
+  document.querySelector(".c-bot").style.transition = t;
 }
 
-function animateTo(target) {
-  if (state.animTimer) {
-    clearTimeout(state.animTimer);
-    state.animTimer = null;
-  }
-  const start = state.open ? 1 : 0;
-  const end = target ? 1 : 0;
-  const duration = 280; // 总时长 ms(速度适中)
-  const t0 = performance.now();
-  const frame = async () => {
-    const t = Math.min(1, (performance.now() - t0) / duration);
-    const p = start + (end - start) * easeOutCubic(t);
-    const last = t >= 1;
-    await drawOpen(p);
-    if (!last) {
-      state.animTimer = setTimeout(frame, 22);
-    } else {
-      state.animTimer = null;
-      state.open = target;
-      if (!target) await drawClosed();
-      else state.panelH = measurePanel();
-      nudgeInput(); // 尺寸变化后重新激活输入(Linux input region 失效)
-      // 动画结束后读一次实际位置同步 basePos
-      const f = await sf();
-      const pos = await appWindow.outerPosition();
-      const size = await appWindow.outerSize();
-      state.basePos = basePosFromWindow(
-        pos.x / f, pos.y / f,
-        size.width / f, size.height / f,
-      );
-    }
-  };
-  frame();
+function setPanelTransition(on) {
+  const t = on ? ("height " + OPEN_MS + "ms " + OPEN_EASE) : "none";
+  $("panel").style.transition = t;
+}
+
+async function syncBasePos() {
+  const f = await sf();
+  const pos = await appWindow.outerPosition();
+  const size = await appWindow.outerSize();
+  state.basePos = basePosFromWindow(
+    pos.x / f, pos.y / f,
+    size.width / f, size.height / f,
+  );
+}
+
+function finishAnim() {
+  state.animTimer = null;
+  setHalfTransition(false);
+  setPanelTransition(false);
+  nudgeInput(); // 尺寸变化后重新激活输入(Linux input region 失效)
+  syncBasePos();
 }
 
 function openPanel() {
-  if (state.open) return;
+  if (state.open || state.animTimer) return;
   state.panelH = measurePanel();
   state.open = true;
-  animateTo(true);
+  // 1) DOM 起始态: 半片合拢, 面板 0 高
+  halfStyle("translateY(0px)", "translateY(0px)");
+  const panel = $("panel");
+  panel.style.height = "0px";
+  panel.style.display = "block";
+  // 2) 窗口一次到位(球心不动), 布局到展开态(不动半片/面板, 由过渡接管)
+  drawOpen(1, false).then(() => {
+    // 3) 触发 CSS 过渡: 下半球分离 + 面板展开
+    setHalfTransition(true);
+    setPanelTransition(true);
+    requestAnimationFrame(() => {
+      const gap = state.docked ? PANEL_W : state.panelH;
+      if (state.docked === "left") halfStyle("translateY(-" + gap + "px)", "translateY(0px)");
+      else halfStyle("translateY(0px)", "translateY(" + gap + "px)");
+      panel.style.height = state.panelH + "px";
+    });
+  });
+  state.animTimer = setTimeout(finishAnim, OPEN_MS + 60);
 }
 
 function closePanel() {
-  if (!state.open) return;
-  animateTo(false);
+  if (!state.open || state.animTimer) return;
+  // 1) CSS 过渡收拢: 下半球归位 + 面板收起
+  setHalfTransition(true);
+  setPanelTransition(true);
+  const panel = $("panel");
+  requestAnimationFrame(() => {
+    halfStyle("translateY(0px)", "translateY(0px)");
+    panel.style.height = "0px";
+  });
+  state.animTimer = setTimeout(async () => {
+    state.open = false;
+    await drawClosed(); // 窗口回到 64x64
+    finishAnim();
+  }, OPEN_MS + 60);
 }
 
 function togglePanel() {
@@ -317,7 +347,7 @@ function ballTextValue() {
   if (!state.usage) return "";
   const gtype = String(state.gw ? state.gw.type : "").toLowerCase();
   if (gtype === "deepseek" || gtype === "openrouter") {
-    return fmtMoneyShort(state.usage.cost, state.usage.currency);
+    return fmtMoneyShort(state.usage.balance, state.usage.currency);
   }
   return fmtShort(state.usage.total);
 }
