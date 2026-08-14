@@ -1517,12 +1517,14 @@ if HAVE_QT:
         skin_changed = Signal(str)
         config_reload_requested = Signal()
         refresh_requested = Signal()
+        always_on_top_toggled = Signal(bool)
 
         def __init__(self, cfg: dict, has_logs: bool = True, config_path=None):
             super().__init__()
             self._cfg = cfg
             self._config_path = config_path or CONFIG_PATH
             self._interval = cfg["gateway"]["refresh_seconds"]
+            self._always_on_top = bool(cfg["window"].get("always_on_top", True))
             self._detail_cache = {}
             self._dot_err = False
             self._convs_visible = False
@@ -1760,8 +1762,14 @@ if HAVE_QT:
             menu.exec(self._btn_skin.mapToGlobal(QPoint(0, self._btn_skin.height())))
 
         def _show_settings(self):
-            """设置二级菜单: 编辑配置 / 打开配置目录 / 重载配置(热生效)。"""
+            """设置二级菜单: 置顶开关 / 编辑配置 / 打开配置目录 / 重载配置。"""
             menu = QMenu(self)
+            act_top = menu.addAction("窗口置顶")
+            act_top.setCheckable(True)
+            act_top.setChecked(self._always_on_top)
+            act_top.setToolTip("Windows/X11 生效;Wayland 由合成器决定,通常无效")
+            act_top.triggered.connect(self._toggle_always_on_top)
+            menu.addSeparator()
             act_edit = menu.addAction("编辑配置…")
             act_edit.setToolTip(str(self._config_path))
             act_edit.triggered.connect(self._edit_config)
@@ -1771,6 +1779,10 @@ if HAVE_QT:
             menu.addAction("重载配置", self._reload_config)
             menu.exec(self._btn_settings.mapToGlobal(
                 QPoint(0, self._btn_settings.height())))
+
+        def _toggle_always_on_top(self):
+            self._always_on_top = not self._always_on_top
+            self.always_on_top_toggled.emit(self._always_on_top)
 
         def _edit_config(self):
             err = _open_with_default_app(self._config_path)
@@ -1956,6 +1968,9 @@ if HAVE_QT:
             self._ball = BallWindow()
             self._ball.clicked.connect(self.toggle_main)
             self._ball.quit_requested.connect(self.quit)
+            if not bool(cfg["window"].get("always_on_top", True)):
+                # 配置里关闭置顶: 显示前移除置顶标志(运行中可在「设置」菜单切换)
+                self._ball.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
             self._skin_name = self._load_skin()
             self._ball.set_skin(self._skin_name)
             self._ball.skin_changed.connect(self._on_skin_changed)
@@ -1976,6 +1991,7 @@ if HAVE_QT:
             self._panel.skin_changed.connect(self._on_skin_changed)
             self._panel.config_reload_requested.connect(self.reload_config)
             self._panel.refresh_requested.connect(self.refresh_now)
+            self._panel.always_on_top_toggled.connect(self.set_always_on_top)
             self._panel.set_skin_name(self._skin_name)
 
             self._tray_ok = False
@@ -2173,6 +2189,25 @@ if HAVE_QT:
                 self._bridge.logs_ready.emit(convs)
             except Exception as exc:
                 self._bridge.logs_error.emit(str(exc))
+
+        def set_always_on_top(self, on: bool):
+            """运行时切换窗口置顶。Windows/X11 原生生效;Wayland 由合成器决定。"""
+            was_open = self._ball.is_open()
+            was_visible = self._ball.isVisible()  # 须在 setWindowFlag 前记录(它会隐藏窗口)
+            geo = self._ball.geometry()
+            self._ball.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, on)
+            if geo.width() > 0:
+                self._ball.setGeometry(geo)
+            if was_visible:
+                self._ball.show()  # setWindowFlag 会隐藏窗口,需重新显示
+            if was_open:
+                self._ball.open_panel()
+            self._ball._update_mask()
+            if "wayland" in QApplication.platformName().lower():
+                self._panel.set_status(
+                    "Wayland 不支持置顶(合成器忽略)" if on else "置顶已关闭")
+            else:
+                self._panel.set_status("窗口置顶已开启" if on else "窗口置顶已关闭")
 
         def reload_config(self):
             """重新读取配置文件并热生效(网关类型/间隔/字段映射等,无需重启)。"""
