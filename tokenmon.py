@@ -1866,7 +1866,12 @@ if HAVE_QT:
                 pass
 
         def toggle_main(self):
-            if self._ball.is_open():
+            if not self._ball.isVisible():
+                # 球被手动关闭(如 WM 的 Alt+F4 / 关闭按钮)后只是隐藏:
+                # 托盘点击重新拉起悬浮球并展开面板
+                self.show_ball()
+                self._ball.open_panel()
+            elif self._ball.is_open():
                 self._ball.close_panel()
             else:
                 self._ball.open_panel()
