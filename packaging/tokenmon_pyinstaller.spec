@@ -7,6 +7,8 @@
 # 产物: dist/tokenmon(.exe) —— 目录模式(onedir),含 _internal 运行库
 # 注意: PyInstaller 不支持交叉编译,Windows exe 必须在 Windows 上构建(CI 已配置)。
 
+import os
+
 datas, binaries, hiddenimports = [], [], []
 
 # 只用 QtCore/QtGui/QtWidgets: 排除未用的大模块(QtWebEngine/Qt3D/多媒体等),
@@ -34,6 +36,33 @@ excludes = [
     "tkinter", "unittest", "pydoc",
 ]
 
+
+def _drop_dep(entry):
+    """按文件名裁剪不需要的 Qt 依赖。
+
+    TokenMon 的球体/图标/托盘图标全部由 QPainter 自绘,不加载任何外部图片:
+    - 图像格式插件(imageformats)整体不需要 → 连带砍掉 AV1/JPEG-XL/HEIF/EXR/
+      RAW/TIFF 等编解码库与 libQt6Pdf(24MB)
+    - libQt6Network / libQt6Svg 无使用者(网络用标准库 urllib)
+    - 保留: libssl/libcrypto(Python ssl,https 抓取)、libdbus(托盘)、
+      xcb/wayland 平台插件
+    """
+    n = os.path.basename(entry[0]).lower()
+    if "imageformats" in entry[0]:
+        return True
+    if n.startswith(("libqt6pdf", "libqt6network", "libqt6svg",
+                     "libqopensslbackend")):
+        return True
+    if n.startswith(("libaom", "libavif", "libdav1d", "libjxl", "libheif",
+                     "libopenexr", "libraw", "libsvtav1", "librav1e", "libvmaf",
+                     "libglycin", "libopenh264", "libyuv", "libde265",
+                     "libiex", "libilmthread", "libimath", "libopenjph",
+                     "libopenjp2", "libjasper", "libmng", "libduktape",
+                     "libkf6archive", "libtinysparql", "libssh")):
+        return True
+    return False
+
+
 a = Analysis(
     ["../tokenmon.py"],
     pathex=[],
@@ -46,6 +75,9 @@ a = Analysis(
     excludes=excludes,
     noarchive=False,
 )
+a.binaries = [b for b in a.binaries if not _drop_dep(b)]
+a.datas = [d for d in a.datas if not _drop_dep(d)]
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
@@ -56,7 +88,7 @@ exe = EXE(
     name="tokenmon",
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
+    strip=True,
     upx=True,
     console=False,          # 无控制台窗口(Windows pythonw 风格)
     disable_windowed_traceback=False,
@@ -67,7 +99,7 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
-    strip=False,
+    strip=True,
     upx=True,
     upx_exclude=[],
     name="tokenmon",

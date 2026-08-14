@@ -103,7 +103,7 @@ pip install pyside6
 
 - **GitHub Actions CI**:打 `v*` 标签自动跑测试并构建 Windows exe + Linux RPM(`.github/workflows/build.yml`),exe 自动挂到 Release
 - **图标**:`packaging/icons/tokenmon.ico`(16..256 多尺寸,由球体绘制生成)
-- 注意:PyInstaller 不支持交叉编译,Windows exe 必须在 Windows(或 CI)上构建;构建配置见 `packaging/tokenmon_pyinstaller.spec`(已排除 Qt 未用模块,onedir 约 200MB)
+- 注意:PyInstaller 不支持交叉编译,Windows exe 必须在 Windows(或 CI)上构建;构建配置见 `packaging/tokenmon_pyinstaller.spec`——已排除 Qt 未用模块并裁剪图像格式插件等依赖(应用全程自绘不加载外部图片),onedir 约 160MB(Qt6 本身约 100MB+,这是 GUI 框架的固有体积;纯 CLI 工具如 cc_switch 没有 GUI 框架,所以只有十几 MB)
 
 ## 开发与测试
 
