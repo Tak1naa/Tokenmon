@@ -115,6 +115,12 @@ fn open_with_default_app(path: &Path) -> Result<(), String> {
 // --------------------------------------------------------------------------
 
 /// 运行平台: windows / x11 / wayland(影响窗口移动能力与吸附)
+/// 冒烟测试: 前端上报按钮位置/菜单状态
+#[tauri::command]
+fn tm_report(rect: String) {
+    eprintln!("[smoke] btnrect: {rect}");
+}
+
 #[tauri::command]
 fn get_platform() -> String {
     #[cfg(windows)]
@@ -351,21 +357,42 @@ pub fn run() {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
                     let sleep = std::time::Duration::from_millis;
+                    let open_ms = std::env::var("TOKENMON_SMOKE_OPEN_MS")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(1500);
                     std::thread::sleep(sleep(3000)); // 等首屏加载与首次抓取
                     if let Some(win) = handle.get_webview_window("main") {
                         let s = win.outer_size().unwrap_or_default();
-                        let inner = win.inner_size().unwrap_or_default();
                         eprintln!(
-                            "[smoke] window outer={}x{} inner={}x{} scale={:.2} visible={}",
-                            s.width, s.height, inner.width, inner.height,
-                            win.scale_factor().unwrap_or(1.0),
-                            win.is_visible().unwrap_or(false)
+                            "[smoke] window outer={}x{} scale={:.2}",
+                            s.width, s.height,
+                            win.scale_factor().unwrap_or(1.0)
                         );
                     }
                     capture_window(&handle, "/tmp/tmtest/shot_closed.png");
                     std::thread::sleep(sleep(800));
                     let _ = handle.emit("tm-toggle", ()); // 展开
-                    std::thread::sleep(sleep(1500));
+                    if std::env::var("TOKENMON_SMOKE_CLICK").is_ok() {
+                        std::thread::sleep(sleep(600));
+                        if let Some(win) = handle.get_webview_window("main") {
+                            // 1) 报告按钮真实位置(供 XTest 精确点击)
+                            let _ = win.eval(
+                                "window.__TAURI__.core.invoke('tm_report', {rect: JSON.stringify(document.querySelector('#btns [data-act=details]').getBoundingClientRect())});",
+                            );
+                            std::thread::sleep(sleep(600));
+                            // 1.5) eval 点击详情按钮
+                            let _ = win.eval(
+                                "window.__TAURI__.core.invoke('tm_report', {rect: 'CLICK-EVAL'}); document.querySelector('#btns [data-act=details]').click();",
+                            );
+                            std::thread::sleep(sleep(1600)); // 等交互脚本点击
+                            // 2) 报告菜单状态
+                            let _ = win.eval(
+                                "window.__TAURI__.core.invoke('tm_report', {rect: 'MENU:' + document.getElementById('menu').hidden});",
+                            );
+                        }
+                    }
+                    std::thread::sleep(sleep(open_ms));
                     capture_window(&handle, "/tmp/tmtest/shot_open.png");
                     std::thread::sleep(sleep(2000));
                     let _ = handle.emit("tm-toggle", ()); // 收起
@@ -378,6 +405,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_config,
             get_platform,
+            tm_report,
             fetch_usage,
             fetch_conversations,
             edit_config,

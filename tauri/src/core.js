@@ -8,7 +8,7 @@ export const BALL = 64;      // 球体显示尺寸
 export const PANEL_W = 200;  // 面板宽度
 export const SNAP_TH = 48;   // 边缘吸附阈值(px)
 export const ANIM_STEPS = 12;
-export const ANIM_MS = 16;
+export const ANIM_MS = 60; // 实验: 加大帧间隔测试 resize 风暴
 
 export const DETAIL_FIELDS = [
   ["prompt", "Prompt"],

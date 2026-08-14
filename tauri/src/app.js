@@ -8,7 +8,8 @@ import {
 } from "./core.js";
 
 const { invoke } = window.__TAURI__.core;
-const { getCurrentWindow, LogicalPosition, LogicalSize } = window.__TAURI__.window;
+const { getCurrentWindow, LogicalPosition, LogicalSize, PhysicalSize } =
+  window.__TAURI__.window;
 const { listen } = window.__TAURI__.event;
 
 const appWindow = getCurrentWindow();
@@ -56,6 +57,18 @@ async function setWindow(w, h, x, y) {
   if (x !== undefined && y !== undefined) {
     await appWindow.setPosition(new LogicalPosition(Math.round(x), Math.round(y)));
   }
+}
+
+// Linux 失效模式修复(参考 cc-switch linux_fix.rs):
+// GTK surface 与 WebView 的 input region 协商失败时, 窗口整体不响应点击。
+// ±1px 伪 resize 触发 size_allocate -> 重新 attach input surface。
+async function nudgeInput() {
+  if (state.platform !== "wayland" && state.platform !== "x11") return;
+  const s = await appWindow.outerSize();
+  if (s.width === 0 || s.height === 0) return;
+  await appWindow.setSize(new PhysicalSize(s.width + 1, s.height));
+  await new Promise((r) => setTimeout(r, 100));
+  await appWindow.setSize(new PhysicalSize(s.width, s.height));
 }
 
 function halfStyle(topT, botT) {
@@ -149,13 +162,9 @@ async function drawOpen(p) {
     const pos = windowPosFromBase(state.basePos, w, h);
     await setWindow(w, h, pos.x, pos.y);
   }
-  const f = await sf();
-  const pos = await appWindow.outerPosition();
-  const size = await appWindow.outerSize();
-  state.basePos = basePosFromWindow(
-    pos.x / f, pos.y / f,
-    size.width / f, size.height / f,
-  );
+  // 注意: 动画期间不读回 outerPosition 更新 basePos —— X11 下 outerPosition
+  // 含 CSD 装饰偏移, 每帧读回会导致窗口逐帧漂移(球向上跳)。
+  // 位置同步移到 animateTo 完成后进行一次。
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +191,15 @@ function animateTo(target) {
       state.open = target;
       if (!target) await drawClosed();
       else state.panelH = measurePanel();
+      nudgeInput(); // 尺寸变化后重新激活输入(Linux input region 失效)
+      // 动画结束后读一次实际位置同步 basePos
+      const f = await sf();
+      const pos = await appWindow.outerPosition();
+      const size = await appWindow.outerSize();
+      state.basePos = basePosFromWindow(
+        pos.x / f, pos.y / f,
+        size.width / f, size.height / f,
+      );
     }
   };
   frame();
@@ -600,7 +618,8 @@ async function init() {
     showMenu(e.clientX, e.clientY, contextItems());
   });
   document.addEventListener("click", (e) => {
-    if (!$("menu").hidden && !$("menu").contains(e.target) && e.target !== stage) {
+    // 排除按钮: 按钮点击先 showMenu, 同一 click 冒泡到这里不能立刻关掉刚开的菜单
+    if (!$("menu").hidden && !$("menu").contains(e.target) && !e.target.closest("button") && e.target !== stage) {
       hideMenu();
     }
   });
@@ -640,6 +659,7 @@ async function init() {
   state.basePos = { x: pos.x / f, y: pos.y / f };
   await drawClosed();
   updateBallText();
+  nudgeInput(); // 首次显示后重新激活输入
   refreshNow();
 }
 
