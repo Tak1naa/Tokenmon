@@ -961,30 +961,39 @@ if HAVE_QT:
             p.drawRoundedRect(QRectF(cx + rx - bdx - bw, cy - ry + bdy, bw, bh), 2, 2)
 
         if text:
-            # 有徽记的球(大师球)文字区下移避开徽记,但高度按 16.5px 起步 ——
-            # 字号适配只由文字宽度决定,与皮肤无关(各球同文字同字号)
-            text_area = QRectF(cx - rx, cy - ry + (emblem_h + 1 if emblem else 0),
-                               2 * rx, (16.5 if emblem else ry - band_h / 2))
-            font = _FONT_CACHE.get(text)
-            if font is None:
-                font = QFont()
-                font.setBold(True)
-                size = 13
-                # 顶部半圆的实际可用宽度(球径减去两侧边距),比固定 48px 更宽松
-                max_w = max(40.0, 2 * rx - 10)
-                while size >= 6:  # 最小 6pt,长金额/长数字也能完整放下
-                    font.setPixelSize(size)
-                    if QFontMetrics(font).horizontalAdvance(text) <= max_w:
-                        break
-                    size -= 1
-                if len(_FONT_CACHE) < 64:
-                    _FONT_CACHE[text] = font
-            p.setFont(font)
-            p.setPen(QColor(0, 0, 0, 90))
-            p.drawText(text_area.translated(0, 1), Qt.AlignmentFlag.AlignCenter, text)
-            p.setPen(QColor(255, 255, 255))
-            p.drawText(text_area, Qt.AlignmentFlag.AlignCenter, text)
+            _draw_ball_text(p, rect, text, emblem, emblem_h)
         p.restore()
+
+    def _draw_ball_text(p: QPainter, rect: QRectF, text: str,
+                        emblem, emblem_h: float):
+        """在球的上半区绘制数据文字(独立函数: 吸附旋转后文字可保持水平)。"""
+        cx, cy = rect.center().x(), rect.center().y()
+        rx = rect.width() / 2 - 1.5
+        ry = rect.height() / 2 - 1.5
+        band_h = 8.0
+        # 有徽记的球(大师球)文字区下移避开徽记,但高度按 16.5px 起步 ——
+        # 字号适配只由文字宽度决定,与皮肤无关(各球同文字同字号)
+        text_area = QRectF(cx - rx, cy - ry + (emblem_h + 1 if emblem else 0),
+                           2 * rx, (16.5 if emblem else ry - band_h / 2))
+        font = _FONT_CACHE.get(text)
+        if font is None:
+            font = QFont()
+            font.setBold(True)
+            size = 13
+            # 顶部半圆的实际可用宽度(球径减去两侧边距),比固定 48px 更宽松
+            max_w = max(40.0, 2 * rx - 10)
+            while size >= 6:  # 最小 6pt,长金额/长数字也能完整放下
+                font.setPixelSize(size)
+                if QFontMetrics(font).horizontalAdvance(text) <= max_w:
+                    break
+                size -= 1
+            if len(_FONT_CACHE) < 64:
+                _FONT_CACHE[text] = font
+        p.setFont(font)
+        p.setPen(QColor(0, 0, 0, 90))
+        p.drawText(text_area.translated(0, 1), Qt.AlignmentFlag.AlignCenter, text)
+        p.setPen(QColor(255, 255, 255))
+        p.drawText(text_area, Qt.AlignmentFlag.AlignCenter, text)
 
     def make_pokeball_icon(skin_name=None) -> QIcon:
         pm = QPixmap(BALL_SIZE, BALL_SIZE)
@@ -1006,14 +1015,22 @@ if HAVE_QT:
             self._text = "—"
             self._gap = 0.0
             self.skin = SKINS[DEFAULT_SKIN]
+            self._docked = None  # "left"/"right": 吸附桌面边缘时球旋转 90°
             self.setFixedSize(BALL_SIZE, BALL_SIZE)
+
+        def set_docked(self, docked):
+            self._docked = docked
+            self.update()
 
         def _get_gap(self):
             return self._gap
 
         def _set_gap(self, value: float):
             self._gap = float(value)
-            self.setFixedHeight(BALL_SIZE + int(round(self._gap)))
+            if self._docked:
+                self.setFixedWidth(BALL_SIZE + int(round(self._gap)))
+            else:
+                self.setFixedHeight(BALL_SIZE + int(round(self._gap)))
             self.update()
 
         # QPropertyAnimation 动画值: 左右两半分离的间距(像素)
@@ -1039,9 +1056,44 @@ if HAVE_QT:
             # 全清会把下面面板的背景擦掉,菜单左侧出现透明层;
             # 球的绘制本身完整覆盖其区域(合拢整球/打开两半球),不会残留旧像素
             if self._gap <= 0:
-                # 合拢态: 整球一次画完
-                draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
-                              self._text, skin=self.skin)
+                if self._docked:
+                    # 吸附在左右边缘: 整球旋转 90°(右侧向左、左侧向右),文字保持水平
+                    rot = -90 if self._docked == "right" else 90
+                    p.save()
+                    p.translate(BALL_SIZE / 2, BALL_SIZE / 2)
+                    p.rotate(rot)
+                    p.translate(-BALL_SIZE / 2, -BALL_SIZE / 2)
+                    draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
+                                  None, skin=self.skin)
+                    p.restore()
+                    _draw_ball_text(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
+                                    self._text, None, 0.0)
+                else:
+                    # 合拢态: 整球一次画完
+                    draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
+                                  self._text, skin=self.skin)
+            elif self._docked:
+                # 吸附打开态(水平开合): 贴边的一半留在屏幕边缘,
+                # 另一半朝屏幕中心移动,面板在中间展开
+                bw = self.width()
+                bh = self.height()
+                by = (bh - BALL_SIZE) // 2
+                rot = -90 if self._docked == "right" else 90
+                # 右侧吸附: 屏幕左半 = 旋转后的上半; 左侧吸附则相反
+                if self._docked == "right":
+                    left_clip, right_clip = (0, 0, BALL_SIZE, BALL_SIZE / 2),                                             (0, BALL_SIZE / 2, BALL_SIZE, BALL_SIZE / 2)
+                else:
+                    left_clip, right_clip = (0, BALL_SIZE / 2, BALL_SIZE, BALL_SIZE / 2),                                             (0, 0, BALL_SIZE, BALL_SIZE / 2)
+                for i, (tx, clip) in enumerate(((0, left_clip), (self._gap, right_clip))):
+                    p.save()
+                    p.translate(tx, by)
+                    p.translate(BALL_SIZE / 2, BALL_SIZE / 2)
+                    p.rotate(rot)
+                    p.translate(-BALL_SIZE / 2, -BALL_SIZE / 2)
+                    p.setClipRect(QRectF(*clip))
+                    draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
+                                  None, skin=self.skin)
+                    p.restore()
             else:
                 # 打开态(上下开合): 保留原始半球形状(64px),上半留在原位、
                 # 下半下移 gap,不画文字(文字位于横缝会被撕成两半)
@@ -1065,9 +1117,14 @@ if HAVE_QT:
             super().__init__(parent)
             self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             self._color = QColor("#e3350d")
+            self._docked = None
 
         def set_color(self, color: str):
             self._color = QColor(color)
+            self.update()
+
+        def set_docked(self, docked):
+            self._docked = docked
             self.update()
 
         def paintEvent(self, ev):
@@ -1081,16 +1138,31 @@ if HAVE_QT:
                 return
             ins = 1.0  # 描边整体向内收 1px,完整落在窗口内
             path = QPainterPath()
-            top_rect = QRectF(ins, ins, BALL_SIZE - 2 * ins, BALL_SIZE - 2 * ins)
-            bot_rect = QRectF(ins, h - BALL_SIZE + ins,
-                              BALL_SIZE - 2 * ins, BALL_SIZE - 2 * ins)
-            path.moveTo(w - ins, BALL_SIZE / 2)           # 面板右上角
-            path.lineTo(ins + BALL_SIZE, BALL_SIZE / 2)   # 顶边 → 上半球右端
-            path.arcTo(top_rect, 0, 180)                  # 上半球弧 → 左端
-            path.lineTo(ins, h - BALL_SIZE / 2)           # 左侧边 → 下半球左端
-            path.arcTo(bot_rect, 180, 180)                # 下半球弧(完全在面板外)→ 右端
-            path.lineTo(w - ins, h - BALL_SIZE / 2)       # 面板底边 → 右下角
-            path.closeSubpath()                           # 右侧边
+            if self._docked:
+                # 水平胶囊: 左半球弧 + 上边 + 右半球弧 + 下边
+                by = (h - BALL_SIZE) / 2
+                left_rect = QRectF(ins, by + ins, BALL_SIZE - 2 * ins,
+                                   BALL_SIZE - 2 * ins)
+                right_rect = QRectF(w - BALL_SIZE + ins, by + ins,
+                                    BALL_SIZE - 2 * ins, BALL_SIZE - 2 * ins)
+                path.moveTo(ins + BALL_SIZE / 2, by + ins)   # 左弧起点(12 点)
+                path.arcTo(left_rect, 90, 180)               # 左弧 → 6 点
+                path.lineTo(w - ins - BALL_SIZE / 2,
+                            by + BALL_SIZE - ins)            # 下边 → 右弧 6 点
+                path.arcTo(right_rect, -90, 180)             # 右弧 → 12 点
+                path.lineTo(ins + BALL_SIZE / 2, by + ins)   # 上边 → 起点
+                path.closeSubpath()
+            else:
+                top_rect = QRectF(ins, ins, BALL_SIZE - 2 * ins, BALL_SIZE - 2 * ins)
+                bot_rect = QRectF(ins, h - BALL_SIZE + ins,
+                                  BALL_SIZE - 2 * ins, BALL_SIZE - 2 * ins)
+                path.moveTo(w - ins, BALL_SIZE / 2)          # 面板右上角
+                path.lineTo(ins + BALL_SIZE, BALL_SIZE / 2)  # 顶边 → 上半球右端
+                path.arcTo(top_rect, 0, 180)                 # 上半球弧 → 左端
+                path.lineTo(ins, h - BALL_SIZE / 2)          # 左侧边 → 下半球左端
+                path.arcTo(bot_rect, 180, 180)               # 下半球弧(完全在面板外)→ 右端
+                path.lineTo(w - ins, h - BALL_SIZE / 2)      # 面板底边 → 右下角
+                path.closeSubpath()                          # 右侧边
             p.setPen(QPen(self._color, 2))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawPath(path)
@@ -1123,6 +1195,7 @@ if HAVE_QT:
             self._open_progress = 0.0
             self._base_pos = None
             self._skin_name = DEFAULT_SKIN
+            self._docked = None  # "left"/"right": 吸附桌面左右边缘(球旋转 90°)
             # Wayland 顶层窗口不能程序化移动: 居中只能靠球在窗口内下移
             self._wayland = "wayland" in QApplication.platformName().lower()
 
@@ -1161,6 +1234,9 @@ if HAVE_QT:
                 self.setFixedSize(BALL_SIZE, BALL_SIZE)
                 self._update_mask()
                 return
+            if self._docked:
+                self._apply_open_docked(t)
+                return
             # 上下开合: 上半球留在窗口顶部,下半球下移 gap,面板在中间展开。
             # 球 widget 始终在窗口 x=0 —— 打开时球不产生任何水平平移;
             # X11/Windows: 窗口整体上移 gap/2 → 球心在屏幕上保持原位;
@@ -1189,6 +1265,40 @@ if HAVE_QT:
             self._border.show()
             self._update_mask()
 
+        def _apply_open_docked(self, t: float):
+            """吸附在左右边缘: 面板朝屏幕中心水平展开(球左右开合)。
+
+            贴边的一半(白色)锚定在屏幕边缘不动,另一半(红色)朝中心移动,
+            面板在中间展开;窗口高度同步增长(球心垂直位置不变)。
+            """
+            ph = self._panel_h
+            m = self.PANEL_GAP
+            total = ph + 2 * m
+            gap = int(round(total * t))
+            w = BALL_SIZE + gap
+            h = max(BALL_SIZE, int(round(BALL_SIZE + (ph - BALL_SIZE) * t)))
+            if not self._wayland and self._base_pos is not None:
+                # 右缘吸附: 窗口右缘锚定在屏幕边缘; 左缘吸附: 左缘锚定
+                new_x = (self._base_pos.x() + BALL_SIZE - w
+                         if self._docked == "right" else self._base_pos.x())
+                new_y = self._base_pos.y() - int(round((h - BALL_SIZE) / 2 * t))
+                self.move(new_x, new_y)
+            self.setFixedSize(w, h)
+            self._ball.set_docked(self._docked)
+            self._ball.gap = gap
+            self._ball.setFixedHeight(h)
+            self._ball.move(0, 0)
+            if self._panel is not None:
+                self._panel.setVisible(True)
+                # 面板在两半球之间(左半球宽 32 → 面板从 x=32 起),
+                # 占满窗口高度(固定宽 200,动画中被窗口裁剪)
+                self._panel.setGeometry(BALL_SIZE // 2, 0, self.PANEL_WIDTH, h)
+            self._border.setGeometry(0, 0, w, h)
+            self._border.set_docked(self._docked)
+            self._border.raise_()
+            self._border.show()
+            self._update_mask()
+
         def set_skin(self, name: str):
             if name not in SKINS:
                 return
@@ -1202,8 +1312,8 @@ if HAVE_QT:
             self.repaint()
 
         def _ball_shape_region(self, gap: int, ball_x: int, ball_y: int,
-                               ball_w: int) -> QRegion:
-            """球上下两半(半圆)+ 面板的遮罩区域,与绘制几何严格一致。
+                               ball_w: int, horizontal: bool = False) -> QRegion:
+            """球两半(半圆)+ 面板的遮罩区域,与绘制几何严格一致。
 
             注意: 不能用"内切椭圆"近似半圆 —— 椭圆在接缝处会缩成一点,
             把球中间切掉一条。半圆必须用 QPainterPath 的弧线构造,
@@ -1215,6 +1325,20 @@ if HAVE_QT:
             inflate = 1.0
             arc_rect = QRectF(ball_x - inflate, ball_y - inflate,
                               ball_w + 2 * inflate, BALL_SIZE + 2 * inflate)
+            if horizontal:
+                # 吸附开合: 左半(旋转后的上半)12 点→9 点→6 点
+                left = QPainterPath()
+                left.moveTo(ball_x + BALL_SIZE / 2, ball_y)
+                left.arcTo(arc_rect, 90, 180)
+                left.closeSubpath()
+                region |= QRegion(left.toFillPolygon().toPolygon())
+                # 右半(旋转后的下半)6 点→3 点→12 点,整体右移 gap
+                right = QPainterPath()
+                right.moveTo(ball_x + BALL_SIZE / 2 + gap, ball_y + BALL_SIZE)
+                right.arcTo(arc_rect.translated(gap, 0), -90, 180)
+                right.closeSubpath()
+                region |= QRegion(right.toFillPolygon().toPolygon())
+                return region
             # 上半: 3 点 → 12 点 → 9 点(0°→180° 逆时针,经过 90°),弦沿 y=32
             top = QPainterPath()
             top.moveTo(ball_x, ball_y + BALL_SIZE / 2)
@@ -1235,13 +1359,16 @@ if HAVE_QT:
             ball_x = self._ball.x()
             ball_y = self._ball.y()
             ball_w = self._ball.width()
-            region = self._ball_shape_region(gap, ball_x, ball_y, ball_w)
+            horizontal = bool(self._docked and self._open_progress > 0)
+            if horizontal:
+                # 吸附开合: 半球在窗口垂直居中
+                ball_y = (self.height() - BALL_SIZE) // 2
+            region = self._ball_shape_region(gap, ball_x, ball_y, ball_w, horizontal)
             if self._open_progress > 0 and self._panel is not None:
-                py = self._panel.y()
-                ph = self._panel.height()
-                if ph > 0:
-                    # 只覆盖面板本体(不含两半球之外的右上/右下缺口区)
-                    region |= QRegion(QRect(0, py, self.width(), ph))
+                g = self._panel.geometry()
+                if g.height() > 0:
+                    # 只覆盖面板本体(不含两半球之外的缺口区)
+                    region |= QRegion(g)
             self.setMask(region)
 
         def attach_panel(self, panel):
@@ -1307,6 +1434,9 @@ if HAVE_QT:
             if delta.manhattanLength() >= QApplication.startDragDistance():
                 self._moved = True
                 self._press_global = None
+                if self._docked:  # 拖动即解除吸附(释放时靠近边缘会重新吸附)
+                    self._docked = None
+                    self._ball.set_docked(None)
                 if self.windowHandle() is not None:
                     self.windowHandle().startSystemMove()
 
@@ -1315,6 +1445,31 @@ if HAVE_QT:
                 if self._press_global is not None and not self._moved:
                     self.clicked.emit()
                 self._press_global = None
+                if self._moved:
+                    self._maybe_snap()
+
+        def _maybe_snap(self):
+            """拖动释放后: 靠近左右屏幕边缘则吸附(右侧向左转 90°,左侧向右转 90°)。"""
+            if self.is_open():
+                return
+            center = self.frameGeometry().center()
+            screen = QApplication.screenAt(center)
+            if screen is None:
+                return
+            geo = screen.geometry()
+            TH = 48  # 吸附阈值(px)
+            x = self.x()
+            if abs(x - geo.left()) <= TH:
+                dock, target_x = "left", geo.left()
+            elif abs((geo.right() + 1 - self.width()) - x) <= TH:
+                dock, target_x = "right", geo.right() + 1 - self.width()
+            else:
+                dock, target_x = None, None
+            self._docked = dock
+            self._ball.set_docked(dock)
+            if dock is not None and not self._wayland:
+                y = max(geo.top(), min(self.y(), geo.bottom() + 1 - self.height()))
+                self.move(target_x, y)  # Wayland 无法程序化移动,只旋转不吸附
 
         def contextMenuEvent(self, ev):
             menu = QMenu(self)
