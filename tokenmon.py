@@ -806,36 +806,39 @@ if HAVE_QT:
     # 精灵球绘制(唯一绘制源,悬浮球与托盘图标共用)
     # ----------------------------------------------------------------------
     # ----------------------------------------------------------------------
-    # 皮肤(精灵球 / 大师球 / 超级球 / 高级球 / 治愈球)
+    # 皮肤(精灵球 / 大师球 / 超级球 / 高级球)
     # ----------------------------------------------------------------------
     # 各球外观按宝可梦官方设定:
     #   精灵球 = 红上半 + 白下半; 大师球 = 紫上半 + 顶部粉色 M 徽记(官方无"双耳");
-    #   超级球 = 蓝上半 + 两侧红色凸起(约 1/3 球高处,明显伸出球体);
-    #   高级球 = 深色上半 + 顶部黄色横纹; 治愈球 = 粉上半 + 按钮粉色 + 号
-    # 凸起几何(球坐标系,球心 32,32,球半径 30.5):
-    #   bump_dx = 凸起中心到球边缘的水平距离(略在球外 → 外侧伸出 ~5px)
-    #   bump_dy = 凸起中心到球顶的距离; bump_r = 凸起半径
+    #   超级球 = 蓝上半 + 球内两侧红色矩形侧块; 高级球 = 深色上半 + 顶部黄色横纹
+    # 侧块几何(球坐标系,球心 32,32,球半径 30.5):
+    #   bump_dx = 左块左边距球左缘的距离; bump_dy = 距球顶; bump_w/bump_h = 尺寸
     SKINS = {
         "pokeball": {"label": "精灵球", "top_hi": "#ef3a26", "top_lo": "#cf2410"},
         "master": {"label": "大师球", "top_hi": "#8a4fd8", "top_lo": "#551fa8",
                    "emblem": "M", "emblem_color": "#f04f9e"},
         "great": {"label": "超级球", "top_hi": "#3f7fe0", "top_lo": "#1d55b3",
-                  "bumps": True, "bump_r": 6.0, "bump_dx": 4.5, "bump_dy": 17.0},
+                  "bumps": True, "bump_w": 10.0, "bump_h": 8.0,
+                  "bump_dx": 3.5, "bump_dy": 18.0},
         "ultra": {"label": "高级球", "top_hi": "#3d4046", "top_lo": "#17181c",
                   "stripe": "#ffd733"},
-        "heal": {"label": "治愈球", "top_hi": "#f77fb9", "top_lo": "#e05a9e",
-                 "mark": "+"},
     }
     DEFAULT_SKIN = "pokeball"
 
     # 球身文字字体缓存: 按文字内容缓存最终字号,避免每帧重建 QFont/QFontMetrics
     _FONT_CACHE: dict = {}
 
-    def _add_skin_actions(menu: QMenu, current: str, on_pick) -> None:
-        """给菜单加「皮肤」子菜单(精灵球右键与主界面共用)。"""
-        skins = menu.addMenu("皮肤")
+    def _add_skin_actions(menu: QMenu, current: str, on_pick,
+                          submenu: bool = True) -> None:
+        """给菜单加皮肤选项。
+
+        submenu=True: 放进「皮肤」子菜单(右键菜单与托盘菜单共用,避免挤占其他项);
+        submenu=False: 直接平铺在 menu 里(主界面的「皮肤 ▾」按钮就是专用菜单,
+        再套一层子菜单纯属多余)。
+        """
+        target = menu.addMenu("皮肤") if submenu else menu
         for name, spec in SKINS.items():
-            act = skins.addAction(spec["label"])
+            act = target.addAction(spec["label"])
             act.setCheckable(True)
             act.setChecked(name == current)
             act.triggered.connect(lambda _checked=False, n=name: on_pick(n))
@@ -884,7 +887,7 @@ if HAVE_QT:
         p.fillRect(QRectF(band.left(), band.bottom() - 1, band.width(), 1),
                    QColor(0, 0, 0, 40))
 
-        # 中央按钮: 白底 + 深色圆环; 部分球在按钮上有标记(治愈球的 + 号)
+        # 中央按钮: 白底 + 深色圆环
         p.setPen(QPen(QColor("#3a3d45"), 2))
         p.setBrush(QBrush(QColor("#f8f9fa")))
         p.drawEllipse(QPointF(cx, cy), 10.5, 10.5)
@@ -918,15 +921,16 @@ if HAVE_QT:
             p.drawText(QRectF(cx - r, cy - r + 1, 2 * r, emblem_h - 1),
                        Qt.AlignmentFlag.AlignCenter, emblem)
 
-        # 超级球的侧凸起(画在轮廓上方,呈凸出感)
+        # 超级球: 球内两侧的红色矩形侧块(不伸出球体,圆角 2px)
         if skin.get("bumps"):
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QColor("#e3350d"))
-            br = skin.get("bump_r", 5.5)
-            bdx = skin.get("bump_dx", 4.5)
-            bdy = skin.get("bump_dy", 13.0)
-            p.drawEllipse(QPointF(cx - r + bdx, cy - r + bdy), br, br)
-            p.drawEllipse(QPointF(cx + r - bdx, cy - r + bdy), br, br)
+            bw = skin.get("bump_w", 10.0)
+            bh = skin.get("bump_h", 15.0)
+            bdx = skin.get("bump_dx", 1.5)
+            bdy = skin.get("bump_dy", 10.0)
+            p.drawRoundedRect(QRectF(cx - r + bdx, cy - r + bdy, bw, bh), 2, 2)
+            p.drawRoundedRect(QRectF(cx + r - bdx - bw, cy - r + bdy, bw, bh), 2, 2)
 
         if text:
             # 有徽记的球(大师球)文字下移避开徽记,字号起点也更小
@@ -1144,22 +1148,7 @@ if HAVE_QT:
             right.arcTo(arc_rect.translated(gap, 0), -90, 180)
             right.closeSubpath()
             region |= QRegion(right.toFillPolygon().toPolygon())
-            # 皮肤侧凸起(超级球): 按皮肤几何参数补椭圆区域
-            skin = self._ball.skin
-            bump_r = float(skin.get("bump_r") or 0)
-            if bump_r > 0:
-                r = BALL_SIZE / 2 - 1.5
-                cx = BALL_SIZE / 2
-                bdx = float(skin.get("bump_dx") or 0)
-                bdy = float(skin.get("bump_dy") or 0)
-                size = int(2 * bump_r) + 5  # 各向外扩 2px,吸收栅格化/AA 误差
-                by = int(cx - r + bdy - bump_r - 2) + ball_y
-                region |= QRegion(
-                    QRect(int(cx - r + bdx - bump_r) - 2, by, size, size),
-                    QRegion.RegionType.Ellipse)
-                region |= QRegion(
-                    QRect(int(cx + r - bdx - bump_r) - 2 + gap, by, size, size),
-                    QRegion.RegionType.Ellipse)
+            # 皮肤元素都在球体轮廓内(超级球侧块/大师球徽记),圆遮罩已覆盖,无需扩展
             return region
 
         def _update_mask(self):
@@ -1291,11 +1280,13 @@ if HAVE_QT:
 
         def __init__(self, cfg: dict, has_logs: bool = True):
             super().__init__()
+            self._cfg = cfg
             self._interval = cfg["gateway"]["refresh_seconds"]
             self._detail_cache = {}
             self._dot_err = False
             self._convs_visible = False
             self._pending_convs = None  # 面板未展开时暂存的最新对话数据
+            self._usage_seen = False  # 是否已收到第一次用量数据
             self._skin_name = DEFAULT_SKIN
             self._build_ui()
             if not has_logs:
@@ -1338,9 +1329,21 @@ if HAVE_QT:
             hdr.addWidget(btn_quit)
             v.addLayout(hdr)
 
-            self._row_total = self._add_row(v, "Token 用量")
-            self._row_cache = self._add_row(v, "缓存命中")
-            self._row_cost = self._add_row(v, "费用")
+            # 三个主指标行; 按网关类型预隐藏拿不到的指标
+            # (deepseek/openrouter 无 token/缓存统计, litellm 无缓存字段)
+            self._row_keys = ["total", "cache", "cost"]
+            self._rows = {}
+            for key, label in (("total", "Token 用量"),
+                               ("cache", "缓存命中"), ("cost", "费用")):
+                self._rows[key] = self._add_row(v, label)
+            self._hidden_by_config = set()
+            gtype = str(self._cfg["gateway"].get("type", "")).lower()
+            if gtype in ("deepseek", "openrouter"):
+                self._hidden_by_config |= {"total", "cache"}
+            elif gtype == "litellm":
+                self._hidden_by_config |= {"cache"}
+            for key in self._hidden_by_config:
+                self._set_row_visible(key, False)
             self._balance_row = None
             self._balance_val = None
 
@@ -1357,7 +1360,7 @@ if HAVE_QT:
             self._btn_convs.clicked.connect(self._toggle_convs)
             self._btn_skin = QPushButton("皮肤 ▾")
             self._btn_skin.setProperty("cls", "btn")
-            self._btn_skin.setToolTip("切换精灵球皮肤(精灵球/大师球/超级球/高级球/治愈球)")
+            self._btn_skin.setToolTip("切换精灵球皮肤(精灵球/大师球/超级球/高级球)")
             self._btn_skin.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self._btn_skin.clicked.connect(self._show_skins)
             foot.addWidget(self._btn_details)
@@ -1401,18 +1404,40 @@ if HAVE_QT:
 
             self.setFixedWidth(320)
 
-        def _add_row(self, parent, label: str) -> QLabel:
-            row = QHBoxLayout()
+        def _add_row(self, parent, label: str):
+            row = QWidget()
+            h = QHBoxLayout(row)
+            h.setContentsMargins(0, 0, 0, 0)
             lbl = QLabel(label)
             lbl.setProperty("cls", "row-label")
             val = QLabel("—")
             val.setProperty("cls", "row-value")
             val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            row.addWidget(lbl)
-            row.addStretch(1)
-            row.addWidget(val)
-            parent.addLayout(row)
-            return val
+            h.addWidget(lbl)
+            h.addStretch(1)
+            h.addWidget(val)
+            parent.addWidget(row)
+            return row, val
+
+        def _set_row_visible(self, key: str, visible: bool):
+            """主指标行按需显隐: 用插删而非 setVisible(隐藏会污染布局最小尺寸)。"""
+            row, _val = self._rows[key]
+            in_layout = row.parent() is not None
+            if visible == in_layout:
+                return
+            if visible:
+                # 插回原相对位置: 前面还有几个可见行就插到第几个(1 = 表头之后)
+                pos = 1 + sum(1 for k in self._row_keys[: self._row_keys.index(key)]
+                              if self._rows[k][0].parent() is not None)
+                self._v.insertWidget(pos, row)
+                row.show()
+            else:
+                self._v.removeWidget(row)
+                row.hide()
+                row.setParent(None)
+            self._v.activate()
+            self.adjustSize()
+            self.size_changed.emit()
 
         def _ensure_balance_row(self):
             """余额行按需插入(deepseek 等只有余额的网关); 用插删而非隐藏,避免布局最小尺寸残留。"""
@@ -1429,7 +1454,10 @@ if HAVE_QT:
             h.addWidget(lbl)
             h.addStretch(1)
             h.addWidget(self._balance_val)
-            self._v.insertWidget(4, row)  # 费用行之后
+            # 插在最后一个可见主指标行之后(行可能被隐藏,不能写死索引)
+            pos = 1 + sum(1 for k in self._row_keys
+                          if self._rows[k][0].parent() is not None)
+            self._v.insertWidget(pos, row)
             self._balance_row = row
             self.adjustSize()
             self.size_changed.emit()
@@ -1476,7 +1504,8 @@ if HAVE_QT:
 
         def _show_skins(self):
             menu = QMenu(self)
-            _add_skin_actions(menu, self._skin_name, self.skin_changed.emit)
+            _add_skin_actions(menu, self._skin_name, self.skin_changed.emit,
+                              submenu=False)
             menu.exec(self._btn_skin.mapToGlobal(QPoint(0, self._btn_skin.height())))
 
         def set_skin_name(self, name: str):
@@ -1528,12 +1557,23 @@ if HAVE_QT:
                 self._dot.style().polish(self._dot)
 
         def update(self, usage: Usage, session_tokens, session_cost, rate):
-            self._row_total.setText(
-                _fmt_tokens(usage.total) if usage.total is not None else "—")
-            self._row_cache.setText(
-                _fmt_tokens(usage.cache_hit) if usage.cache_hit is not None else "—")
-            self._row_cost.setText(
-                _fmt_money(usage.cost, usage.currency) if usage.cost is not None else "—")
+            self._usage_seen = True
+            # 主指标行: 有值就显示/刷新; 收不到值的行隐藏(首次数据到达前保持占位)
+            vals = {
+                "total": (usage.total, _fmt_tokens),
+                "cache": (usage.cache_hit, _fmt_tokens),
+                "cost": (usage.cost, lambda v: _fmt_money(v, usage.currency)),
+            }
+            for key, (row, val) in self._rows.items():
+                if key in self._hidden_by_config:
+                    continue
+                v, fmt = vals[key]
+                if v is not None:
+                    if row.parent() is None:
+                        self._set_row_visible(key, True)
+                    val.setText(fmt(v))
+                elif row.parent() is not None:
+                    self._set_row_visible(key, False)
 
             if usage.balance is not None:
                 self._ensure_balance_row()
