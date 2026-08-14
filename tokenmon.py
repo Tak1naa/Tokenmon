@@ -1051,7 +1051,8 @@ if HAVE_QT:
             self.update()
 
         def paintEvent(self, ev):
-            """描边沿窗口轮廓: 面板顶边 → 上半球弧 → 左侧 → 底边(面板铺满底部) → 右侧。"""
+            """描边沿窗口轮廓: 顶边 → 上半球弧 → 左侧 → 下半球弧 →
+            阶梯下沿 → 底边 → 右侧。两半球弧都在边框上(吸附窗口边缘)。"""
             p = QPainter(self)
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             w, h = self.width(), self.height()
@@ -1061,12 +1062,16 @@ if HAVE_QT:
             ins = 1.0  # 描边整体向内收 1px,完整落在窗口内
             path = QPainterPath()
             top_rect = QRectF(ins, ins, BALL_SIZE - 2 * ins, BALL_SIZE - 2 * ins)
-            path.moveTo(w - ins, BALL_SIZE / 2)          # 面板右上角
-            path.lineTo(ins + BALL_SIZE, BALL_SIZE / 2)  # 顶边 → 上半球右端
-            path.arcTo(top_rect, 0, 180)                 # 上半球弧 → 左端
-            path.lineTo(ins, h - ins)                    # 左侧边 → 左下角
-            path.lineTo(w - ins, h - ins)                # 底边(全宽)→ 右下角
-            path.closeSubpath()                          # 右侧边
+            bot_rect = QRectF(ins, h - BALL_SIZE + ins,
+                              BALL_SIZE - 2 * ins, BALL_SIZE - 2 * ins)
+            path.moveTo(w - ins, BALL_SIZE / 2)           # 面板右上角
+            path.lineTo(ins + BALL_SIZE, BALL_SIZE / 2)   # 顶边 → 上半球右端
+            path.arcTo(top_rect, 0, 180)                  # 上半球弧 → 左端
+            path.lineTo(ins, h - BALL_SIZE / 2)           # 左侧边 → 下半球左端
+            path.arcTo(bot_rect, 180, 180)                # 下半球弧 → 右端
+            path.lineTo(ins + BALL_SIZE, h - ins)         # 阶梯下沿(半球右端 → 窗口底)
+            path.lineTo(w - ins, h - ins)                 # 底边 → 右下角
+            path.closeSubpath()                           # 右侧边
             p.setPen(QPen(self._color, 2))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawPath(path)
