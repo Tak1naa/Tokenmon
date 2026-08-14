@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 构建产物
+packaging/rpmbuild/
+dist/
+build/
+*.spec.bak
+
+# 编辑器
+.vscode/
+.idea/

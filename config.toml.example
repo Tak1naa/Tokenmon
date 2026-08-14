@@ -1,0 +1,66 @@
+# TokenMon 配置示例 —— 复制到 ~/.config/tokenmon/config.toml 后编辑
+# (首次运行程序也会自动生成该文件; Windows 上位于 %APPDATA%\tokenmon\config.toml)
+
+[gateway]
+type = "custom"             # custom | litellm | openrouter | deepseek
+base_url = "http://127.0.0.1:8080/usage"   # custom 网关返回 token 统计 JSON 的地址; 体验演示数据可填 "mock://usage"
+api_key = ""                # 留空则不发送鉴权头; litellm 用 x-api-key, openrouter/custom 用 Bearer
+refresh_seconds = 5         # 用量轮询间隔(秒,>=1),越小越实时,别打爆网关
+
+# 最近对话列表(主界面"对话"面板显示最近 N 次对话的 prompt 与 token 总量)
+logs_url = ""               # 仅 custom: 返回最近对话 JSON 数组的地址,留空禁用
+logs_limit = 10             # 展示最近 N 条对话 (1..50)
+logs_page_size = 100        # litellm /spend/logs 每页条数 (1..1000)
+logs_refresh_seconds = 60   # 对话列表刷新间隔(秒,>=10,独立于 refresh_seconds)
+
+# 仅 custom 类型生效: 程序字段名 = 响应 JSON 中的点分路径。
+# 默认映射已适配常见网关返回,例如你的网关返回:
+#   {"cacheHitTokens":…, "cacheMissTokens":…, "completionTokens":…, "cost":…,
+#    "currency":"¥", "promptTokens":…, "reasoningTokens":…,
+#    "sessionCacheHitTokens":…, "sessionCacheMissTokens":…, "totalTokens":…}
+# 就能直接工作,无需改映射。字段缺失时对应行自动隐藏,推理列只在有值时显示。
+[gateway.fields]
+prompt = "promptTokens"
+completion = "completionTokens"
+reasoning = "reasoningTokens"
+cache_hit = "cacheHitTokens"
+cache_miss = "cacheMissTokens"
+session_cache_hit = "sessionCacheHitTokens"
+session_cache_miss = "sessionCacheMissTokens"
+total = "totalTokens"
+cost = "cost"
+currency = "currency"
+
+# custom 的 logs_url 约定返回 JSON 数组(按时间升序,最新的在末尾):
+#   [{"prompt": "用户第一句话…", "tokens": 12345, "time": "2026-08-13T10:00:00"}]
+# 也兼容 {"data": [...]} / {"logs": [...]} 信封;
+# tokens 键名接受 tokens / total_tokens / totalTokens。
+
+[window]
+always_on_top = true        # 置顶: Windows/X11 原生生效; Wayland 无协议,尽力而为
+decorated = false           # 主界面边框(精灵球永远无边框); 想要系统标题栏可改 true
+
+# ---------------------------------------------------------------------------
+# 其他网关示例(任选一种,把上面 type/base_url/api_key 换成下面配置):
+#
+# 1) LiteLLM proxy(聚合接口 + 自动读取 /spend/logs 最近对话)
+#    type = "litellm"
+#    base_url = "http://127.0.0.1:4000"
+#    api_key = "sk-your-litellm-key"
+#
+# 2) OpenRouter(官方 key 查询接口,约分钟级延迟,返回成本)
+#    type = "openrouter"
+#    base_url = "https://openrouter.ai"
+#    api_key = "sk-or-v1-xxxxxxxx"
+#
+# 3) DeepSeek(官方余额查询 /user/balance,参考 cc_switch 的查询方式;
+#    DeepSeek 无 token 用量统计,只能显示余额/已用金额)
+#    type = "deepseek"
+#    api_key = "sk-xxxxxxxx"
+#
+# 4) 旧式 custom 简配(只显示 total/cost,用点分路径)
+#    type = "custom"
+#    base_url = "http://127.0.0.1:8080/usage"
+#    tokens_path = "data.total_tokens"
+#    cost_path = "data.total_cost"
+# ---------------------------------------------------------------------------

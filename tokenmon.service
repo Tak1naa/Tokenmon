@@ -1,0 +1,23 @@
+# TokenMon systemd 用户服务 —— 开机自启动精灵球悬浮窗
+# 安装:
+#   1. 把 tokenmon.py 放到固定路径,例如 ~/.local/bin/tokenmon.py 并 chmod +x
+#   2. 把本文件复制到 ~/.config/systemd/user/tokenmon.service,
+#      并把 ExecStart 里的路径改成实际路径
+#   3. systemctl --user daemon-reload
+#   4. systemctl --user enable --now tokenmon.service
+#
+# 注意: 需要登录桌面会话后才有 DBus session 和图形环境,
+#       所以挂在 graphical-session.target 之后(而不是默认 default.target)。
+
+[Unit]
+Description=TokenMon - LLM token usage monitor (pokeball widget)
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.local/bin/tokenmon.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

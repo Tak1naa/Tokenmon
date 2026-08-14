@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=TokenMon
+GenericName=LLM token usage monitor
+Comment=Real-time LLM gateway token usage pokeball widget (Windows/Linux)
+Exec=tokenmon
+Icon=utilities-system-monitor-symbolic
+Terminal=false
+Categories=Utility;System;
+Keywords=token;llm;usage;monitor;
+StartupNotify=false

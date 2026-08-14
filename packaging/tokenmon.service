@@ -1,0 +1,18 @@
+# TokenMon systemd 用户服务(由 RPM 安装到 /usr/lib/systemd/user/)
+# 启用自启动:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now tokenmon.service
+# 注意: 需要登录图形会话后才有 DBus session,挂在 graphical-session.target 之后。
+
+[Unit]
+Description=TokenMon - LLM token usage monitor (pokeball widget)
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/tokenmon
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target
