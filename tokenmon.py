@@ -1025,18 +1025,17 @@ if HAVE_QT:
                 draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
                               self._text, skin=self.skin)
             else:
-                # 打开态(上下开合): 球拉伸成与窗口同宽的扁椭球(吸附窗口边框),
-                # 上半留在原位、下半下移 gap,不画文字(文字位于横缝会被撕成两半)
-                bw = self.width()
+                # 打开态(上下开合): 保留原始半球形状(64px),上半留在原位、
+                # 下半下移 gap,不画文字(文字位于横缝会被撕成两半)
                 p.save()
-                p.setClipRect(QRectF(0, 0, bw, BALL_SIZE / 2))
-                draw_pokeball(p, QRectF(0, 0, bw, BALL_SIZE),
+                p.setClipRect(QRectF(0, 0, BALL_SIZE, BALL_SIZE / 2))
+                draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
                               None, skin=self.skin)
                 p.restore()
                 p.save()
                 p.translate(0, self._gap)
-                p.setClipRect(QRectF(0, BALL_SIZE / 2, bw, BALL_SIZE / 2))
-                draw_pokeball(p, QRectF(0, 0, bw, BALL_SIZE),
+                p.setClipRect(QRectF(0, BALL_SIZE / 2, BALL_SIZE, BALL_SIZE / 2))
+                draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
                               None, skin=self.skin)
                 p.restore()
             p.end()
@@ -1054,6 +1053,7 @@ if HAVE_QT:
             self.update()
 
         def paintEvent(self, ev):
+            """描边沿窗口轮廓: 面板顶边 → 上半球弧 → 左侧 → 下半球弧 → 面板底边。"""
             p = QPainter(self)
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             w, h = self.width(), self.height()
@@ -1062,13 +1062,16 @@ if HAVE_QT:
                 return
             ins = 1.0  # 描边整体向内收 1px,完整落在窗口内
             path = QPainterPath()
-            top_rect = QRectF(ins, ins, w - 2 * ins, BALL_SIZE - 2 * ins)
-            bot_rect = QRectF(ins, h - BALL_SIZE + ins, w - 2 * ins, BALL_SIZE - 2 * ins)
-            path.moveTo(ins, BALL_SIZE / 2)
-            path.arcTo(top_rect, 180, -180)           # 顶弧: 左中点 → 右中点
-            path.lineTo(w - ins, h - BALL_SIZE / 2)   # 右侧边
-            path.arcTo(bot_rect, 0, -180)             # 底弧: 右中点 → 左中点
-            path.lineTo(ins, BALL_SIZE / 2)           # 左侧边
+            top_rect = QRectF(ins, ins, BALL_SIZE - 2 * ins, BALL_SIZE - 2 * ins)
+            bot_rect = QRectF(ins, h - BALL_SIZE + ins,
+                              BALL_SIZE - 2 * ins, BALL_SIZE - 2 * ins)
+            path.moveTo(w - ins, BALL_SIZE / 2)        # 面板右上角
+            path.lineTo(ins + BALL_SIZE, BALL_SIZE / 2)  # 顶边 → 上半球右端
+            path.arcTo(top_rect, 0, 180)               # 上半球弧 → 左端
+            path.lineTo(ins, h - BALL_SIZE / 2)        # 左侧边
+            path.arcTo(bot_rect, 180, 180)             # 下半球弧 → 右端
+            path.lineTo(w - ins, h - BALL_SIZE / 2)    # 底边 → 面板右下角
+            path.closeSubpath()                        # 右侧边
             p.setPen(QPen(self._color, 2))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawPath(path)
@@ -1132,7 +1135,6 @@ if HAVE_QT:
                 if self._panel is not None:
                     self._panel.hide()
                 self._ball.gap = 0
-                self._ball.setFixedWidth(BALL_SIZE)
                 self._ball.move(0, 0)
                 self._border.hide()
                 if not self._wayland and self._base_pos is not None:
@@ -1153,8 +1155,7 @@ if HAVE_QT:
                 self.move(self._base_pos - QPoint(0, int(round(total / 2 * t))))
             self.setFixedSize(self.PANEL_WIDTH, max(h, BALL_SIZE))
             self._ball.gap = gap
-            self._ball.setFixedWidth(self.PANEL_WIDTH)
-            self._ball.move(0, 0)
+            self._ball.move(0, 0)  # 球始终在 x=0,保留原始 64px 半球形状
             if self._panel is not None:
                 self._panel.setVisible(True)
                 self._panel.move(0, m + BALL_SIZE // 2)  # 面板紧贴两半球
