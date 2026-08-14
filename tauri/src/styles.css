@@ -54,6 +54,25 @@ html, body {
 #half-top { clip-path: inset(0 0 50% 0); }
 #half-bot { clip-path: inset(50% 0 0 0); }
 
+/* 球身用量文字(上半球中央, 随球旋转) */
+#ball-text {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 64px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 11px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
 /* 吸附: 球整体旋转 90°, 半片自动变为左右 */
 #stage.docked-right #ballwrap { transform: rotate(90deg); }
 #stage.docked-left  #ballwrap { transform: rotate(-90deg); }

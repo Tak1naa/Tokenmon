@@ -8,8 +8,7 @@ import {
 } from "./core.js";
 
 const { invoke } = window.__TAURI__.core;
-const { getCurrentWindow, LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize } =
-  window.__TAURI__.window;
+const { getCurrentWindow, LogicalPosition, LogicalSize } = window.__TAURI__.window;
 const { listen } = window.__TAURI__.event;
 
 const appWindow = getCurrentWindow();
@@ -46,10 +45,15 @@ function stageBox(w, h) {
   s.style.height = h + "px";
 }
 
+// 逻辑坐标辅助: X11 下窗口系统按逻辑尺寸应用, 读取的物理值需除以 scaleFactor
+async function sf() {
+  return appWindow.scaleFactor();
+}
+
 async function setWindow(w, h, x, y) {
-  await appWindow.setSize(new PhysicalSize(Math.round(w), Math.round(h)));
+  await appWindow.setSize(new LogicalSize(Math.round(w), Math.round(h)));
   if (x !== undefined && y !== undefined) {
-    await appWindow.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
+    await appWindow.setPosition(new LogicalPosition(Math.round(x), Math.round(y)));
   }
 }
 
@@ -144,9 +148,12 @@ async function drawOpen(p) {
     const pos = windowPosFromBase(state.basePos, w, h);
     await setWindow(w, h, pos.x, pos.y);
   }
+  const f = await sf();
+  const pos = await appWindow.outerPosition();
+  const size = await appWindow.outerSize();
   state.basePos = basePosFromWindow(
-    (await appWindow.outerPosition()).x, (await appWindow.outerPosition()).y,
-    (await appWindow.outerSize()).width, (await appWindow.outerSize()).height,
+    pos.x / f, pos.y / f,
+    size.width / f, size.height / f,
   );
 }
 
@@ -205,7 +212,8 @@ async function onPointerDown(e) {
   try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
   const pos = await appWindow.outerPosition();
   const size = await appWindow.outerSize();
-  state.press = { sx: e.screenX, sy: e.screenY, wx: pos.x, wy: pos.y, w: size.width, h: size.height };
+  const f = await sf();
+  state.press = { sx: e.screenX, sy: e.screenY, wx: pos.x / f, wy: pos.y / f, w: size.width / f, h: size.height / f };
   state.moved = false;
 }
 
@@ -242,15 +250,16 @@ async function maybeSnap() {
   if (!mon) return;
   const wa = mon.workArea;
   const pos = await appWindow.outerPosition();
-  const x = pos.x;
+  const f = await sf();
+  const x = pos.x / f;
   let dock = null;
   let tx = null;
-  if (Math.abs(x - wa.x) <= SNAP_TH) {
+  if (Math.abs(x - wa.x / f) <= SNAP_TH) {
     dock = "left";
-    tx = wa.x;
-  } else if (Math.abs(wa.x + wa.width - BALL - x) <= SNAP_TH) {
+    tx = wa.x / f;
+  } else if (Math.abs((wa.x + wa.width) / f - BALL - x) <= SNAP_TH) {
     dock = "right";
-    tx = wa.x + wa.width - BALL;
+    tx = (wa.x + wa.width) / f - BALL;
   }
   state.docked = dock;
   if (dock !== null) {
@@ -263,6 +272,30 @@ async function maybeSnap() {
 // ---------------------------------------------------------------------------
 // 数据更新
 // ---------------------------------------------------------------------------
+
+// ---------------- 球身文字 ----------------
+
+function ballTextValue() {
+  if (!state.usage) return "";
+  const gtype = String(state.gw ? state.gw.type : "").toLowerCase();
+  if (gtype === "deepseek" || gtype === "openrouter") {
+    return fmtMoneyShort(state.usage.cost, state.usage.currency);
+  }
+  return fmtShort(state.usage.total);
+}
+
+function updateBallText() {
+  const el = $("ball-text");
+  const t = ballTextValue();
+  el.textContent = t;
+  // 字号自适应: 球 32px 显示尺寸, 上半球可用宽度 ~30px
+  let size = 11;
+  el.style.fontSize = size + "px";
+  while (size > 5 && el.scrollWidth > 30) {
+    size -= 1;
+    el.style.fontSize = size + "px";
+  }
+}
 
 function setStatus(text, error = false) {
   $("status").textContent = String(text).slice(0, 60);
@@ -289,6 +322,7 @@ function applyUsage(u) {
     $("v-" + key).textContent = noVal ? "—" : fmt(v);
   }
   state.detailCache = buildDetailCache(u, state.stats);
+  updateBallText();
   const base = String(state.gw.base_url || "").replace(/\/+$/, "") || "已连接";
   setStatus(base + " · 更新于 " + nowTime());
 }
@@ -588,8 +622,10 @@ async function init() {
   const payload = await invoke("get_config");
   applyConfig(payload);
   const pos = await appWindow.outerPosition();
-  state.basePos = { x: pos.x, y: pos.y };
+  const f = await sf();
+  state.basePos = { x: pos.x / f, y: pos.y / f };
   await drawClosed();
+  updateBallText();
   refreshNow();
 }
 

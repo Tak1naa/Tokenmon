@@ -16,7 +16,7 @@
         "height": 64,
         "x": 300,
         "y": 200,
-        "resizable": false,
+        "resizable": true,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

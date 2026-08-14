@@ -3937,12 +3937,14 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 name = "tokenmon"
 version = "2.0.0"
 dependencies = [
+ "cairo-rs",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-single-instance",
  "tokenmon-core",
+ "webkit2gtk",
 ]
 
 [[package]]

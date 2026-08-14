@@ -58,6 +58,10 @@ git tag v2.0.0 && git push origin v2.0.0
 
 运行依赖:Windows 10/11 自带 WebView2;Linux 需 'sudo dnf install webkit2gtk4.1'(Fedora)。
 
+> **Linux 开发提示**:窗口尺寸必须用**逻辑坐标**(LogicalSize/LogicalPosition),物理值在 HiDPI(scale≠1)下会被窗口系统二次缩放;'resizable' 在 X11 下需为 true 才能程序化 resize(无边框窗口用户无法手动改尺寸,不影响使用)。
+>
+> **冒烟测试**:设 'TOKENMON_SMOKE_OPEN=1' 启动会自动展开/收起面板并抓取窗口快照到 /tmp/tmtest/(Linux webkit snapshot,无需截图工具)。
+
 ## Tkinter 版(Python 标准库,零依赖)
 
 ```bash

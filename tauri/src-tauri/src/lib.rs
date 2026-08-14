@@ -3,10 +3,10 @@
 //! 数据层全部在 tokenmon-core(纯 Rust, 可独立单测), 这里只做薄封装。
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use serde::Serialize;
-use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, WebviewWindow};
 
@@ -149,7 +149,7 @@ fn reload_config(app: tauri::AppHandle, state: tauri::State<AppState>) -> Config
             if let Some(win) = app.get_webview_window("main") {
                 let top = state.cfg.lock().unwrap().window.always_on_top;
                 let _ = win.set_always_on_top(top);
-                set_tray_topmost_checked(&app, top);
+                set_tray_topmost_checked(top);
             }
             build_payload(state.inner())
         }
@@ -171,7 +171,7 @@ fn set_always_on_top(
     window.set_always_on_top(on).map_err(|e| e.to_string())?;
     let state = app.state::<AppState>();
     state.cfg.lock().unwrap().window.always_on_top = on;
-    set_tray_topmost_checked(&app, on);
+    set_tray_topmost_checked(on);
     Ok(())
 }
 
@@ -189,15 +189,37 @@ fn quit(app: tauri::AppHandle) {
 // 托盘
 // --------------------------------------------------------------------------
 
-fn set_tray_topmost_checked(app: &tauri::AppHandle, on: bool) {
-    if let Some(tray) = app.tray_by_id("main") {
-        if let Some(menu) = tray.menu() {
-            if let Some(item) = menu.get("topmost") {
-                if let Some(mi) = item.as_menuitem() {
-                    let _ = mi.set_checked(on);
-                }
-            }
-        }
+// 置顶菜单项句柄(创建托盘时保存, 供动态更新文本)
+static TOPMOST_ITEM: OnceLock<MenuItem<tauri::Wry>> = OnceLock::new();
+
+fn set_tray_topmost_checked(on: bool) {
+    if let Some(item) = TOPMOST_ITEM.get() {
+        let _ = item.set_text(if on { "窗口置顶: 开" } else { "窗口置顶: 关" });
+    }
+}
+
+/// 冒烟测试: 抓取主窗口当前画面存为 PNG(Linux webkit snapshot)
+#[cfg(target_os = "linux")]
+fn capture_window(app: &tauri::AppHandle, path: &str) {
+    if let Some(win) = app.get_webview_window("main") {
+        let path = path.to_string();
+        let _ = win.with_webview(move |webview| {
+            use webkit2gtk::WebViewExt;
+            let w = webview.inner(); // webkit2gtk::WebView
+            w.snapshot(
+                webkit2gtk::SnapshotRegion::FullDocument,
+                webkit2gtk::SnapshotOptions::empty(),
+                None::<&webkit2gtk::gio::Cancellable>,
+                move |res: Result<cairo::Surface, webkit2gtk::glib::Error>| {
+                    if let Ok(surface) = res {
+                        let mut file = std::fs::File::create(&path).ok();
+                        if let Some(mut f) = file.as_mut() {
+                            let _ = surface.write_to_png(&mut f);
+                        }
+                    }
+                },
+            );
+        });
     }
 }
 
@@ -220,7 +242,8 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         true,
         &[&skin_poke, &skin_master, &skin_great, &skin_ultra],
     )?;
-    let topmost = MenuItem::with_id(app, "topmost", "窗口置顶", true, None::<&str>)?;
+    let topmost = MenuItem::with_id(app, "topmost", "窗口置顶: 开", true, None::<&str>)?;
+    let _ = TOPMOST_ITEM.set(topmost.clone());
     let edit_cfg = MenuItem::with_id(app, "edit-config", "编辑配置…", true, None::<&str>)?;
     let open_dir = MenuItem::with_id(app, "open-config-dir", "打开配置目录", true, None::<&str>)?;
     let reload = MenuItem::with_id(app, "reload-config", "重载配置", true, None::<&str>)?;
@@ -301,7 +324,34 @@ pub fn run() {
             // 按配置应用置顶
             let state = app.state::<AppState>();
             let top = state.cfg.lock().unwrap().window.always_on_top;
-            set_tray_topmost_checked(app.handle(), top);
+            set_tray_topmost_checked(top);
+            // 冒烟测试钩子: TOKENMON_SMOKE_OPEN=1 时自动开合并截图
+            if std::env::var("TOKENMON_SMOKE_OPEN").is_ok() {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let sleep = std::time::Duration::from_millis;
+                    std::thread::sleep(sleep(3000)); // 等首屏加载与首次抓取
+                    if let Some(win) = handle.get_webview_window("main") {
+                        let s = win.outer_size().unwrap_or_default();
+                        let inner = win.inner_size().unwrap_or_default();
+                        eprintln!(
+                            "[smoke] window outer={}x{} inner={}x{} scale={:.2} visible={}",
+                            s.width, s.height, inner.width, inner.height,
+                            win.scale_factor().unwrap_or(1.0),
+                            win.is_visible().unwrap_or(false)
+                        );
+                    }
+                    capture_window(&handle, "/tmp/tmtest/shot_closed.png");
+                    std::thread::sleep(sleep(800));
+                    let _ = handle.emit("tm-toggle", ()); // 展开
+                    std::thread::sleep(sleep(1500));
+                    capture_window(&handle, "/tmp/tmtest/shot_open.png");
+                    std::thread::sleep(sleep(2000));
+                    let _ = handle.emit("tm-toggle", ()); // 收起
+                    std::thread::sleep(sleep(1500));
+                    capture_window(&handle, "/tmp/tmtest/shot_closed2.png");
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
