@@ -1068,9 +1068,8 @@ if HAVE_QT:
             path.lineTo(ins + BALL_SIZE, BALL_SIZE / 2)   # 顶边 → 上半球右端
             path.arcTo(top_rect, 0, 180)                  # 上半球弧 → 左端
             path.lineTo(ins, h - BALL_SIZE / 2)           # 左侧边 → 下半球左端
-            path.arcTo(bot_rect, 180, 180)                # 下半球弧 → 右端
-            path.lineTo(ins + BALL_SIZE, h - ins)         # 阶梯下沿(半球右端 → 窗口底)
-            path.lineTo(w - ins, h - ins)                 # 底边 → 右下角
+            path.arcTo(bot_rect, 180, 180)                # 下半球弧(完全在面板外)→ 右端
+            path.lineTo(w - ins, h - BALL_SIZE / 2)       # 面板底边 → 右下角
             path.closeSubpath()                           # 右侧边
             p.setPen(QPen(self._color, 2))
             p.setBrush(Qt.BrushStyle.NoBrush)
@@ -1158,11 +1157,10 @@ if HAVE_QT:
             self._ball.move(0, 0)  # 球始终在 x=0,保留原始 64px 半球形状
             if self._panel is not None:
                 self._panel.setVisible(True)
-                # 面板背景延伸到窗口底部: 菜单下方不允许有透明层,
-                # 下半球绘制在面板深色背景之上(吸附)
+                # 面板只在两半球之间(32..h-32): 下半球完全在面板之外,
+                # 与上半球对称,弦边贴住面板底缘
                 self._panel.setGeometry(0, m + BALL_SIZE // 2,
-                                        self.PANEL_WIDTH,
-                                        self.height() - (m + BALL_SIZE // 2))
+                                        self.PANEL_WIDTH, self._panel_h)
             self._border.setGeometry(0, 0, self.width(), self.height())
             self._border.raise_()
             self._border.show()
@@ -1217,9 +1215,10 @@ if HAVE_QT:
             region = self._ball_shape_region(gap, ball_x, ball_y, ball_w)
             if self._open_progress > 0 and self._panel is not None:
                 py = self._panel.y()
-                bottom = self.height() - py
-                if bottom > 0:
-                    region |= QRegion(QRect(0, py, self.width(), bottom))
+                ph = self._panel.height()
+                if ph > 0:
+                    # 只覆盖面板本体(不含两半球之外的右上/右下缺口区)
+                    region |= QRegion(QRect(0, py, self.width(), ph))
             self.setMask(region)
 
         def attach_panel(self, panel):
