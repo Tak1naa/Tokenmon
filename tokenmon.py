@@ -791,7 +791,7 @@ if HAVE_QT:
     QLabel[cls="conv-sub"] { color: #6e7681; font-size: 10px; }
     QPushButton[cls="btn"] {
         background: transparent; color: #9aa0a6; border: none;
-        border-radius: 6px; padding: 2px 8px; font-size: 13px;
+        border-radius: 6px; padding: 2px 5px; font-size: 13px;
     }
     QPushButton[cls="btn"]:hover { background: rgba(255, 255, 255, 0.08); color: #ffffff; }
     QPushButton[cls="btn"]:pressed { background: rgba(255, 255, 255, 0.15); }
@@ -971,8 +971,6 @@ if HAVE_QT:
     # ----------------------------------------------------------------------
     # 悬浮球
     # ----------------------------------------------------------------------
-    SPLIT_GAP = 28  # 球左右两半打开时的最大间距(像素)
-
     class PokeballWidget(QWidget):
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -988,7 +986,7 @@ if HAVE_QT:
 
         def _set_gap(self, value: float):
             self._gap = float(value)
-            self.setFixedWidth(BALL_SIZE + int(round(self._gap)))
+            self.setFixedHeight(BALL_SIZE + int(round(self._gap)))
             self.update()
 
         # QPropertyAnimation 动画值: 左右两半分离的间距(像素)
@@ -1020,16 +1018,16 @@ if HAVE_QT:
                 draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
                               self._text, skin=self.skin)
             else:
-                # 打开态: 两半裁剪绘制,不画文字 —— 文字位于中缝会被撕成两半,
-                # 出现"半截字符挂在两半上"的沙漏状残影;面板已在中间显示数据
+                # 打开态(上下开合): 上半球留在原位,下半球下移 gap,不画文字
+                # (文字位于横缝会被撕成两半;面板已在中间显示数据)
                 p.save()
-                p.setClipRect(QRectF(0, 0, BALL_SIZE / 2, BALL_SIZE))
+                p.setClipRect(QRectF(0, 0, BALL_SIZE, BALL_SIZE / 2))
                 draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
                               None, skin=self.skin)
                 p.restore()
                 p.save()
-                p.translate(self._gap, 0)
-                p.setClipRect(QRectF(BALL_SIZE / 2, 0, BALL_SIZE / 2, BALL_SIZE))
+                p.translate(0, self._gap)
+                p.setClipRect(QRectF(0, BALL_SIZE / 2, BALL_SIZE, BALL_SIZE / 2))
                 draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
                               None, skin=self.skin)
                 p.restore()
@@ -1047,7 +1045,7 @@ if HAVE_QT:
         skin_changed = Signal(str)
 
         PANEL_GAP = 6
-        PANEL_WIDTH = 320
+        PANEL_WIDTH = 200  # 竖长窗口: 窗口宽度 = 面板宽度(窄而高)
 
         def __init__(self):
             super().__init__(None,
@@ -1068,7 +1066,7 @@ if HAVE_QT:
             self._press_global = None
             self._moved = False
 
-            # 开合动画: 球左右分离 + 窗口向下展开面板,同一个进度属性驱动
+            # 开合动画: 球上下分离 + 窗口上下展开面板,同一个进度属性驱动
             self._anim = QPropertyAnimation(self, b"open_progress", self)
             self._anim.setDuration(260)
             self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -1095,23 +1093,22 @@ if HAVE_QT:
                 self.setFixedSize(BALL_SIZE, BALL_SIZE)
                 self._update_mask()
                 return
-            # 目标: 球与面板垂直居中(球心 = 面板中心)
+            # 上下开合: 上半球留在窗口顶部,下半球下移 gap,面板在中间展开。
+            # X11/Windows: 窗口整体上移 gap/2 → 球心在屏幕上保持原位(始终居中);
+            # Wayland 不能移动窗口,球随窗口内布局下移(尽力而为)。
             ph = self._panel_h
             m = self.PANEL_GAP
-            shift = max(0.0, ph / 2 + m - BALL_SIZE / 2)  # 球心相对窗口顶的位移
-            h_full = int(ph + 2 * m)
-            gap = int(round(self.PANEL_WIDTH * t))
-            self._ball.gap = gap
-            w = BALL_SIZE + gap
-            h = int(round(BALL_SIZE + (h_full - BALL_SIZE) * t))
+            total = ph + 2 * m                     # 上下两半最终间距
+            gap = int(round(total * t))
+            h = int(round(BALL_SIZE + total * t))
             if not self._wayland and self._base_pos is not None:
-                # X11/Windows: 窗口上移 shift,球在窗口内同步下移 → 球在屏幕上保持原位
-                self.move(self._base_pos - QPoint(0, int(round(shift * t))))
-            self.setFixedSize(w, max(h, BALL_SIZE))
-            self._ball.move(0, int(round(shift * t)))
+                self.move(self._base_pos - QPoint(0, int(round(total / 2 * t))))
+            self.setFixedSize(self.PANEL_WIDTH, max(h, BALL_SIZE))
+            self._ball.gap = gap
+            self._ball.move((self.PANEL_WIDTH - BALL_SIZE) // 2, 0)
             if self._panel is not None:
                 self._panel.setVisible(True)
-                self._panel.move(BALL_SIZE // 2, m)
+                self._panel.move(0, m + BALL_SIZE // 2)  # 面板位于两半之间,窗口内位置恒定
             self._update_mask()
 
         def set_skin(self, name: str):
@@ -1125,44 +1122,44 @@ if HAVE_QT:
             self._ball.repaint()
             self.repaint()
 
-        def _ball_shape_region(self, gap: int, ball_y: int) -> QRegion:
-            """球两半(半圆)+ 皮肤侧凸起的遮罩区域,与绘制几何严格一致。
+        def _ball_shape_region(self, gap: int, ball_x: int, ball_y: int) -> QRegion:
+            """球上下两半(半圆)+ 面板的遮罩区域,与绘制几何严格一致。
 
             注意: 不能用"内切椭圆"近似半圆 —— 椭圆在接缝处会缩成一点,
-            把球中间竖直切掉一条(旧的实现就是这么画的,遮罩错位)。
-            半圆必须用 QPainterPath 的弧线构造,gap=0 时两半并成整圆。
+            把球中间切掉一条。半圆必须用 QPainterPath 的弧线构造,
+            gap=0 时两半并成整圆。
             """
             region = QRegion()
             # 多边形栅格化会把弧线内缩 ~1px,弧矩形整体外扩 1px 补偿,
             # 确保遮罩始终不小于实际绘制(多出的透明区无害)。
             inflate = 1.0
-            arc_rect = QRectF(-inflate, ball_y - inflate,
+            arc_rect = QRectF(ball_x - inflate, ball_y - inflate,
                               BALL_SIZE + 2 * inflate, BALL_SIZE + 2 * inflate)
-            # 左半: 12 点 → 9 点 → 6 点(逆时针 180°),弦沿 x=32 竖直方向
-            left = QPainterPath()
-            left.moveTo(BALL_SIZE / 2, ball_y)
-            left.arcTo(arc_rect, 90, 180)
-            left.closeSubpath()
-            region |= QRegion(left.toFillPolygon().toPolygon())
-            # 右半: 6 点 → 3 点 → 12 点,整体右移 gap
-            right = QPainterPath()
-            right.moveTo(BALL_SIZE / 2 + gap, ball_y + BALL_SIZE)
-            right.arcTo(arc_rect.translated(gap, 0), -90, 180)
-            right.closeSubpath()
-            region |= QRegion(right.toFillPolygon().toPolygon())
+            # 上半圆: 3 点 → 12 点 → 9 点(0°→180° 逆时针,经过 90°),弦沿 y=32
+            top = QPainterPath()
+            top.moveTo(ball_x, ball_y + BALL_SIZE / 2)
+            top.arcTo(arc_rect, 0, 180)
+            top.closeSubpath()
+            region |= QRegion(top.toFillPolygon().toPolygon())
+            # 下半圆: 9 点 → 6 点 → 3 点(180°→360° 逆时针,经过 270°),整体下移 gap
+            bottom = QPainterPath()
+            bottom.moveTo(ball_x, ball_y + BALL_SIZE / 2)
+            bottom.arcTo(arc_rect, 180, 180)
+            bottom.closeSubpath()
+            region |= QRegion(bottom.toFillPolygon().toPolygon().translated(0, gap))
             # 皮肤元素都在球体轮廓内(超级球侧块/大师球徽记),圆遮罩已覆盖,无需扩展
             return region
 
         def _update_mask(self):
             gap = int(round(self._ball.gap))
+            ball_x = self._ball.x()
             ball_y = self._ball.y()
-            region = self._ball_shape_region(gap, ball_y)
+            region = self._ball_shape_region(gap, ball_x, ball_y)
             if self._open_progress > 0 and self._panel is not None:
                 py = self._panel.y()
                 bottom = self.height() - py
                 if bottom > 0:
-                    region |= QRegion(QRect(BALL_SIZE // 2, py,
-                                            self.width() - BALL_SIZE // 2, bottom))
+                    region |= QRegion(QRect(0, py, self.width(), bottom))
             self.setMask(region)
 
         def attach_panel(self, panel):
@@ -1365,18 +1362,19 @@ if HAVE_QT:
             self._btn_skin.setToolTip("切换精灵球皮肤(精灵球/大师球/超级球/高级球)")
             self._btn_skin.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self._btn_skin.clicked.connect(self._show_skins)
-            # 按钮右对齐: 右缘与上方参数行的数值右缘对齐(12+296=308)
+            # 按钮右对齐: 右缘与上方参数行的数值右缘对齐; 状态文字单独一行
+            # (竖长窗口放不下按钮+状态同行)
             for btn in (self._btn_details, self._btn_convs, self._btn_skin):
                 btn.setFixedHeight(22)  # 与参数行同高,行距一致
-            self._status = QLabel("启动中…")
-            self._status.setProperty("cls", "status")
-            self._status.setToolTip("")
-            foot.addWidget(self._status)
             foot.addStretch(1)
             foot.addWidget(self._btn_details)
             foot.addWidget(self._btn_convs)
             foot.addWidget(self._btn_skin)
             v.addLayout(foot)
+            self._status = QLabel("启动中…")
+            self._status.setProperty("cls", "status")
+            self._status.setToolTip("")
+            v.addWidget(self._status)
 
             # 最近对话面板(默认收起)
             self._convs_panel = QFrame()
@@ -1408,7 +1406,7 @@ if HAVE_QT:
             self._convs_panel.hide()
             v.addWidget(self._convs_panel)
 
-            self.setFixedWidth(320)
+            self.setFixedWidth(200)  # 竖长窗口: 面板与窗口同宽
 
         def _add_row(self, parent, label: str):
             row = QWidget()
@@ -1558,7 +1556,7 @@ if HAVE_QT:
             # 状态在左、按钮在右: 超长时中间省略,完整内容放 tooltip
             self._status.setToolTip(text)
             self._status.setText(QFontMetrics(self._status.font()).elidedText(
-                text, Qt.TextElideMode.ElideMiddle, 120))
+                text, Qt.TextElideMode.ElideMiddle, 160))
             if error != self._dot_err:
                 self._dot_err = error
                 self._dot.setProperty("err", error)
