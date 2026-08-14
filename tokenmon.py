@@ -1015,11 +1015,9 @@ if HAVE_QT:
 
         def paintEvent(self, ev):
             p = QPainter(self)
-            # repaint() 不会自动清背景: 先整体清空,任何残留像素都不可能存活
-            # (X11/Wayland 上切换皮肤后旧皮肤滞留就是这类残留)
-            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
-            p.fillRect(self.rect(), Qt.GlobalColor.transparent)
-            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+            # 注意: 不能整体清空 —— 球 widget 覆盖整个窗口高度,
+            # 全清会把下面面板的背景擦掉,菜单左侧出现透明层;
+            # 球的绘制本身完整覆盖其区域(合拢整球/打开两半球),不会残留旧像素
             if self._gap <= 0:
                 # 合拢态: 整球一次画完
                 draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
@@ -1053,7 +1051,7 @@ if HAVE_QT:
             self.update()
 
         def paintEvent(self, ev):
-            """描边沿窗口轮廓: 面板顶边 → 上半球弧 → 左侧 → 下半球弧 → 面板底边。"""
+            """描边沿窗口轮廓: 面板顶边 → 上半球弧 → 左侧 → 底边(面板铺满底部) → 右侧。"""
             p = QPainter(self)
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             w, h = self.width(), self.height()
@@ -1063,15 +1061,12 @@ if HAVE_QT:
             ins = 1.0  # 描边整体向内收 1px,完整落在窗口内
             path = QPainterPath()
             top_rect = QRectF(ins, ins, BALL_SIZE - 2 * ins, BALL_SIZE - 2 * ins)
-            bot_rect = QRectF(ins, h - BALL_SIZE + ins,
-                              BALL_SIZE - 2 * ins, BALL_SIZE - 2 * ins)
-            path.moveTo(w - ins, BALL_SIZE / 2)        # 面板右上角
+            path.moveTo(w - ins, BALL_SIZE / 2)          # 面板右上角
             path.lineTo(ins + BALL_SIZE, BALL_SIZE / 2)  # 顶边 → 上半球右端
-            path.arcTo(top_rect, 0, 180)               # 上半球弧 → 左端
-            path.lineTo(ins, h - BALL_SIZE / 2)        # 左侧边
-            path.arcTo(bot_rect, 180, 180)             # 下半球弧 → 右端
-            path.lineTo(w - ins, h - BALL_SIZE / 2)    # 底边 → 面板右下角
-            path.closeSubpath()                        # 右侧边
+            path.arcTo(top_rect, 0, 180)                 # 上半球弧 → 左端
+            path.lineTo(ins, h - ins)                    # 左侧边 → 左下角
+            path.lineTo(w - ins, h - ins)                # 底边(全宽)→ 右下角
+            path.closeSubpath()                          # 右侧边
             p.setPen(QPen(self._color, 2))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawPath(path)
@@ -1158,7 +1153,11 @@ if HAVE_QT:
             self._ball.move(0, 0)  # 球始终在 x=0,保留原始 64px 半球形状
             if self._panel is not None:
                 self._panel.setVisible(True)
-                self._panel.move(0, m + BALL_SIZE // 2)  # 面板紧贴两半球
+                # 面板背景延伸到窗口底部: 菜单下方不允许有透明层,
+                # 下半球绘制在面板深色背景之上(吸附)
+                self._panel.setGeometry(0, m + BALL_SIZE // 2,
+                                        self.PANEL_WIDTH,
+                                        self.height() - (m + BALL_SIZE // 2))
             self._border.setGeometry(0, 0, self.width(), self.height())
             self._border.raise_()
             self._border.show()
@@ -1223,7 +1222,8 @@ if HAVE_QT:
             self._panel.setParent(self)
             self._panel_h = panel.sizeHint().height()
             self._panel.hide()
-            self._border.raise_()  # 描边永远在面板之上
+            self._ball.raise_()    # 两半球绘制在面板背景之上(吸附)
+            self._border.raise_()  # 描边永远在最上层
 
         def panel_resized(self):
             if self._panel is None:
