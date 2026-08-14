@@ -35,10 +35,10 @@
         <div id="convs-status"></div>
       </div>
     </div>
-    <!-- 精灵球: 上下两半, CSS clip 裁剪, 开合动画 -->
+    <!-- 精灵球: 上下两半用 overflow 容器裁剪, 开合动画移动容器 -->
     <div id="ballwrap">
-      <img id="half-top" class="half" src="skins/ball_pokeball.svg" alt="" draggable="false">
-      <img id="half-bot" class="half" src="skins/ball_pokeball.svg" alt="" draggable="false">
+      <div class="clip c-top"><img id="half-top" src="skins/ball_pokeball.svg" alt="" draggable="false"></div>
+      <div class="clip c-bot"><img id="half-bot" src="skins/ball_pokeball.svg" alt="" draggable="false"></div>
       <div id="ball-text"></div>
     </div>
   </div>

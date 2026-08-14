@@ -59,8 +59,8 @@ async function setWindow(w, h, x, y) {
 }
 
 function halfStyle(topT, botT) {
-  $("half-top").style.transform = topT;
-  $("half-bot").style.transform = botT;
+  document.querySelector(".c-top").style.transform = topT;
+  document.querySelector(".c-bot").style.transform = botT;
 }
 
 function measurePanel() {
@@ -104,7 +104,7 @@ async function drawClosed() {
   const bw = $("ballwrap");
   bw.style.left = "0px";
   bw.style.top = "0px";
-  halfStyle("translateY(0px)", "translateY(32px)");
+  halfStyle("translateY(0px)", "translateY(0px)"); // 容器自带 top 定位
   stageBox(BALL, BALL);
   const pos = windowPosFromBase(state.basePos, BALL, BALL);
   await setWindow(BALL, BALL, pos.x, pos.y);
@@ -145,7 +145,7 @@ async function drawOpen(p) {
     panel.style.width = PANEL_W + "px";
     panel.style.height = Math.round(panelH * p) + "px";
     panel.style.display = p > 0 ? "block" : "none";
-    halfStyle("translateY(0px)", "translateY(" + (BALL / 2 + gap) + "px)");
+    halfStyle("translateY(0px)", "translateY(" + gap + "px)"); // 下半容器从 top:32 下移
     const pos = windowPosFromBase(state.basePos, w, h);
     await setWindow(w, h, pos.x, pos.y);
   }
@@ -210,6 +210,8 @@ function togglePanel() {
 
 async function onPointerDown(e) {
   if (e.button !== 0) return;
+  // 面板按钮/标题按钮/菜单区域不参与拖动与开合判定
+  if (e.target.closest("button") || e.target.closest("#menu")) return;
   try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
   const pos = await appWindow.outerPosition();
   const size = await appWindow.outerSize();

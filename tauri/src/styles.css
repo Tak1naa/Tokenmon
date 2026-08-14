@@ -43,16 +43,22 @@ html, body {
 }
 #ballwrap:active { cursor: grabbing; }
 
-.half {
+/* 上下半片: overflow 容器各露一半, img 上移露出下半(不依赖 clip-path) */
+.clip {
   position: absolute;
-  top: 0;
   left: 0;
   width: 64px;
-  height: 64px;
+  height: 32px;
+  overflow: hidden;
   pointer-events: none;
 }
-#half-top { clip-path: inset(0 0 50% 0); }
-#half-bot { clip-path: inset(50% 0 0 0); }
+.c-top { top: 0; }
+.c-bot { top: 32px; }
+.clip img {
+  width: 64px;
+  height: 64px;
+}
+.c-bot img { margin-top: -32px; }
 
 /* 球身用量文字(上半球中央, 随球旋转) */
 #ball-text {
