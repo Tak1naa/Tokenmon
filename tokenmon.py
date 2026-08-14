@@ -812,8 +812,12 @@ if HAVE_QT:
         "pokeball": {"label": "精灵球", "top_hi": "#f04b2f", "top_lo": "#d32b05"},
         "master": {"label": "大师球", "top_hi": "#9c5bd6", "top_lo": "#64239b",
                    "ears": True, "mark": "M"},
+        # 凸起几何(球坐标系,球心 32,32,球半径 30.5):
+        #   bump_dx = 凸起中心到球边缘的水平距离(中心略在球外 → 外侧伸出 ~6.5px)
+        #   bump_dy = 凸起中心到球顶的距离(原版比例 ~1/4 球高处)
+        #   bump_r  = 凸起半径
         "great": {"label": "超级球", "top_hi": "#4292e0", "top_lo": "#1d5aa0",
-                  "bumps": True},
+                  "bumps": True, "bump_r": 5.5, "bump_dx": 4.5, "bump_dy": 13.0},
         "ultra": {"label": "高级球", "top_hi": "#3d4046", "top_lo": "#17181c",
                   "stripe": "#ffd733"},
         "heal": {"label": "治愈球", "top_hi": "#f8bdd2", "top_lo": "#e886a9"},
@@ -858,11 +862,13 @@ if HAVE_QT:
         p.fillPath(bottom, QBrush(QColor("#f8f9fa")))
 
         # 高级球: 上半的黄色横纹(裁剪在球内)
+        # 注意: 必须用 IntersectClip —— 球两半打开时 paintEvent 已有半圆裁剪,
+        # 直接 setClipPath 会替换掉它,横纹会渗进两半之间的空隙。
         if skin.get("stripe"):
             clip = QPainterPath()
             clip.addEllipse(ball_circle)
             p.save()
-            p.setClipPath(clip)
+            p.setClipPath(clip, Qt.ClipOperation.IntersectClip)
             p.fillRect(QRectF(cx - r, cy - r + 9, 2 * r, 5), QColor(skin["stripe"]))
             p.restore()
 
@@ -900,8 +906,11 @@ if HAVE_QT:
         if skin.get("bumps"):
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QColor("#e3350d"))
-            p.drawEllipse(QPointF(cx - r + 4.5, cy - r + 7), 4.5, 4.5)
-            p.drawEllipse(QPointF(cx + r - 4.5, cy - r + 7), 4.5, 4.5)
+            br = skin.get("bump_r", 5.5)
+            bdx = skin.get("bump_dx", 4.5)
+            bdy = skin.get("bump_dy", 13.0)
+            p.drawEllipse(QPointF(cx - r + bdx, cy - r + bdy), br, br)
+            p.drawEllipse(QPointF(cx + r - bdx, cy - r + bdy), br, br)
 
         if text:
             font = _FONT_CACHE.get(text)
@@ -1081,19 +1090,53 @@ if HAVE_QT:
             self._ball.set_skin(name)
             self._update_mask()  # 超级球等皮肤有侧凸起,遮罩需扩展
 
+        def _ball_shape_region(self, gap: int, ball_y: int) -> QRegion:
+            """球两半(半圆)+ 皮肤侧凸起的遮罩区域,与绘制几何严格一致。
+
+            注意: 不能用"内切椭圆"近似半圆 —— 椭圆在接缝处会缩成一点,
+            把球中间竖直切掉一条(旧的实现就是这么画的,遮罩错位)。
+            半圆必须用 QPainterPath 的弧线构造,gap=0 时两半并成整圆。
+            """
+            region = QRegion()
+            # 多边形栅格化会把弧线内缩 ~1px,弧矩形整体外扩 1px 补偿,
+            # 确保遮罩始终不小于实际绘制(多出的透明区无害)。
+            inflate = 1.0
+            arc_rect = QRectF(-inflate, ball_y - inflate,
+                              BALL_SIZE + 2 * inflate, BALL_SIZE + 2 * inflate)
+            # 左半: 12 点 → 9 点 → 6 点(逆时针 180°),弦沿 x=32 竖直方向
+            left = QPainterPath()
+            left.moveTo(BALL_SIZE / 2, ball_y)
+            left.arcTo(arc_rect, 90, 180)
+            left.closeSubpath()
+            region |= QRegion(left.toFillPolygon().toPolygon())
+            # 右半: 6 点 → 3 点 → 12 点,整体右移 gap
+            right = QPainterPath()
+            right.moveTo(BALL_SIZE / 2 + gap, ball_y + BALL_SIZE)
+            right.arcTo(arc_rect.translated(gap, 0), -90, 180)
+            right.closeSubpath()
+            region |= QRegion(right.toFillPolygon().toPolygon())
+            # 皮肤侧凸起(超级球): 按皮肤几何参数补椭圆区域
+            skin = self._ball.skin
+            bump_r = float(skin.get("bump_r") or 0)
+            if bump_r > 0:
+                r = BALL_SIZE / 2 - 1.5
+                cx = BALL_SIZE / 2
+                bdx = float(skin.get("bump_dx") or 0)
+                bdy = float(skin.get("bump_dy") or 0)
+                size = int(2 * bump_r) + 3  # 各向外扩 1px,吸收栅格化误差
+                by = int(cx - r + bdy - bump_r - 1) + ball_y
+                region |= QRegion(
+                    QRect(int(cx - r + bdx - bump_r) - 1, by, size, size),
+                    QRegion.RegionType.Ellipse)
+                region |= QRegion(
+                    QRect(int(cx + r - bdx - bump_r) - 1 + gap, by, size, size),
+                    QRegion.RegionType.Ellipse)
+            return region
+
         def _update_mask(self):
-            # 球的两半始终并集(gap=0 时拼成整圆)+ 打开时两半之间的面板区域
             gap = int(round(self._ball.gap))
             ball_y = self._ball.y()
-            region = QRegion(QRect(0, ball_y, BALL_SIZE // 2, BALL_SIZE),
-                             QRegion.RegionType.Ellipse)
-            region |= QRegion(QRect(BALL_SIZE // 2 + gap, ball_y, BALL_SIZE // 2, BALL_SIZE),
-                              QRegion.RegionType.Ellipse)
-            if self._ball.skin.get("bumps"):
-                # 超级球: 两侧红色凸起伸出球体,遮罩覆盖凸起区域
-                region |= QRegion(QRect(0, ball_y + 2, 9, 10), QRegion.RegionType.Ellipse)
-                region |= QRegion(QRect(55 + gap, ball_y + 2, 9, 10),
-                                  QRegion.RegionType.Ellipse)
+            region = self._ball_shape_region(gap, ball_y)
             if self._open_progress > 0 and self._panel is not None:
                 py = self._panel.y()
                 bottom = self.height() - py
