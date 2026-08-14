@@ -52,10 +52,16 @@ async function sf() {
   return appWindow.scaleFactor();
 }
 
-async function setWindow(w, h, x, y) {
-  await appWindow.setSize(new LogicalSize(Math.round(w), Math.round(h)));
-  if (x !== undefined && y !== undefined) {
-    await appWindow.setPosition(new LogicalPosition(Math.round(x), Math.round(y)));
+async function setWindow(w, h, x, y, sync = false) {
+  const s = appWindow.setSize(new LogicalSize(Math.round(w), Math.round(h)));
+  const p =
+    x !== undefined && y !== undefined
+      ? appWindow.setPosition(new LogicalPosition(Math.round(x), Math.round(y)))
+      : null;
+  // 动画帧 fire-and-forget(不阻塞); 最后一帧/收尾必须 await 保证最终状态
+  if (sync) {
+    await s;
+    if (p) await p;
   }
 }
 
@@ -120,10 +126,10 @@ async function drawClosed() {
   halfStyle("translateY(0px)", "translateY(0px)"); // 容器自带 top 定位
   stageBox(BALL, BALL);
   const pos = windowPosFromBase(state.basePos, BALL, BALL);
-  await setWindow(BALL, BALL, pos.x, pos.y);
+  await setWindow(BALL, BALL, pos.x, pos.y, true);
 }
 
-async function drawOpen(p) {
+async function drawOpen(p, sync = false) {
   const panelH = state.panelH;
   const gap = Math.round(panelH * p);
   if (state.docked) {
@@ -143,7 +149,7 @@ async function drawOpen(p) {
     if (state.docked === "right") halfStyle("translateY(0px)", "translateY(" + gap + "px)");
     else halfStyle("translateY(-" + gap + "px)", "translateY(0px)");
     const pos = windowPosFromBase(state.basePos, w, h);
-    await setWindow(w, h, pos.x, pos.y);
+    await setWindow(w, h, pos.x, pos.y, sync);
   } else {
     const w = PANEL_W;
     const h = BALL + Math.round(panelH * p);
@@ -160,7 +166,7 @@ async function drawOpen(p) {
     panel.style.display = p > 0 ? "block" : "none";
     halfStyle("translateY(0px)", "translateY(" + gap + "px)"); // 下半容器从 top:32 下移
     const pos = windowPosFromBase(state.basePos, w, h);
-    await setWindow(w, h, pos.x, pos.y);
+    await setWindow(w, h, pos.x, pos.y, sync);
   }
   // 注意: 动画期间不读回 outerPosition 更新 basePos —— X11 下 outerPosition
   // 含 CSD 装饰偏移, 每帧读回会导致窗口逐帧漂移(球向上跳)。
@@ -171,21 +177,26 @@ async function drawOpen(p) {
 // 开合动画
 // ---------------------------------------------------------------------------
 
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
 function animateTo(target) {
   if (state.animTimer) {
     clearTimeout(state.animTimer);
     state.animTimer = null;
   }
-  const steps = ANIM_STEPS;
   const start = state.open ? 1 : 0;
   const end = target ? 1 : 0;
-  let i = 1;
+  const duration = 280; // 总时长 ms(速度适中)
+  const t0 = performance.now();
   const frame = async () => {
-    const p = start + (end - start) * (i / steps);
-    await drawOpen(p);
-    if (i < steps) {
-      i += 1;
-      state.animTimer = setTimeout(frame, ANIM_MS);
+    const t = Math.min(1, (performance.now() - t0) / duration);
+    const p = start + (end - start) * easeOutCubic(t);
+    const last = t >= 1;
+    await drawOpen(p, last);
+    if (!last) {
+      state.animTimer = setTimeout(frame, 14);
     } else {
       state.animTimer = null;
       state.open = target;
@@ -259,7 +270,7 @@ async function onPointerMove(e) {
     }
     const nx = state.press.wx + dx;
     const ny = state.press.wy + dy;
-    await setWindow(state.press.w, state.press.h, nx, ny);
+    await setWindow(state.press.w, state.press.h, nx, ny, true);
     state.basePos = basePosFromWindow(nx, ny, state.press.w, state.press.h);
   }
 }
@@ -294,7 +305,7 @@ async function maybeSnap() {
   }
   state.docked = dock;
   if (dock !== null) {
-    await setWindow(BALL, BALL, tx, pos.y);
+    await setWindow(BALL, BALL, tx, pos.y, true);
     state.basePos = { x: tx, y: pos.y };
   }
   await drawClosed();
@@ -320,9 +331,9 @@ function updateBallText() {
   const t = ballTextValue();
   el.textContent = t;
   // 字号自适应: 球 64px 显示尺寸, 上半球可用宽度 ~56px
-  let size = 13;
+  let size = 17;
   el.style.fontSize = size + "px";
-  while (size > 6 && el.scrollWidth > 56) {
+  while (size > 7 && el.scrollWidth > 52) {
     size -= 1;
     el.style.fontSize = size + "px";
   }
