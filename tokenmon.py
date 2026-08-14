@@ -1157,10 +1157,13 @@ if HAVE_QT:
             self._ball.move(0, 0)  # 球始终在 x=0,保留原始 64px 半球形状
             if self._panel is not None:
                 self._panel.setVisible(True)
-                # 面板只在两半球之间(32..h-32): 下半球完全在面板之外,
-                # 与上半球对称,弦边贴住面板底缘
+                # 面板只在两半球之间(32..h-32),下半球完全在面板之外。
+                # 面板高度随动画同步增长(底缘始终 = 下半球弦边 = h-32):
+                # 否则固定高度会让面板与下半球/描边速率不一致,动画中互相重叠
                 self._panel.setGeometry(0, m + BALL_SIZE // 2,
-                                        self.PANEL_WIDTH, self._panel_h)
+                                        self.PANEL_WIDTH,
+                                        max(0, self.height()
+                                            - 2 * (m + BALL_SIZE // 2)))
             self._border.setGeometry(0, 0, self.width(), self.height())
             self._border.raise_()
             self._border.show()
