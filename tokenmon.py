@@ -808,19 +808,23 @@ if HAVE_QT:
     # ----------------------------------------------------------------------
     # 皮肤(精灵球 / 大师球 / 超级球 / 高级球 / 治愈球)
     # ----------------------------------------------------------------------
+    # 各球外观按宝可梦官方设定:
+    #   精灵球 = 红上半 + 白下半; 大师球 = 紫上半 + 顶部粉色 M 徽记(官方无"双耳");
+    #   超级球 = 蓝上半 + 两侧红色凸起(约 1/3 球高处,明显伸出球体);
+    #   高级球 = 深色上半 + 顶部黄色横纹; 治愈球 = 粉上半 + 按钮粉色 + 号
+    # 凸起几何(球坐标系,球心 32,32,球半径 30.5):
+    #   bump_dx = 凸起中心到球边缘的水平距离(略在球外 → 外侧伸出 ~5px)
+    #   bump_dy = 凸起中心到球顶的距离; bump_r = 凸起半径
     SKINS = {
-        "pokeball": {"label": "精灵球", "top_hi": "#f04b2f", "top_lo": "#d32b05"},
-        "master": {"label": "大师球", "top_hi": "#9c5bd6", "top_lo": "#64239b",
-                   "ears": True, "mark": "M"},
-        # 凸起几何(球坐标系,球心 32,32,球半径 30.5):
-        #   bump_dx = 凸起中心到球边缘的水平距离(中心略在球外 → 外侧伸出 ~6.5px)
-        #   bump_dy = 凸起中心到球顶的距离(原版比例 ~1/4 球高处)
-        #   bump_r  = 凸起半径
-        "great": {"label": "超级球", "top_hi": "#4292e0", "top_lo": "#1d5aa0",
-                  "bumps": True, "bump_r": 5.5, "bump_dx": 4.5, "bump_dy": 13.0},
+        "pokeball": {"label": "精灵球", "top_hi": "#ef3a26", "top_lo": "#cf2410"},
+        "master": {"label": "大师球", "top_hi": "#8a4fd8", "top_lo": "#551fa8",
+                   "emblem": "M", "emblem_color": "#f04f9e"},
+        "great": {"label": "超级球", "top_hi": "#3f7fe0", "top_lo": "#1d55b3",
+                  "bumps": True, "bump_r": 6.0, "bump_dx": 4.5, "bump_dy": 17.0},
         "ultra": {"label": "高级球", "top_hi": "#3d4046", "top_lo": "#17181c",
                   "stripe": "#ffd733"},
-        "heal": {"label": "治愈球", "top_hi": "#f8bdd2", "top_lo": "#e886a9"},
+        "heal": {"label": "治愈球", "top_hi": "#f77fb9", "top_lo": "#e05a9e",
+                 "mark": "+"},
     }
     DEFAULT_SKIN = "pokeball"
 
@@ -880,16 +884,16 @@ if HAVE_QT:
         p.fillRect(QRectF(band.left(), band.bottom() - 1, band.width(), 1),
                    QColor(0, 0, 0, 40))
 
-        # 中央按钮: 白底 + 深色圆环(经典样式); 大师球按钮上有 M 字
+        # 中央按钮: 白底 + 深色圆环; 部分球在按钮上有标记(治愈球的 + 号)
         p.setPen(QPen(QColor("#3a3d45"), 2))
         p.setBrush(QBrush(QColor("#f8f9fa")))
         p.drawEllipse(QPointF(cx, cy), 10.5, 10.5)
         if skin.get("mark"):
             f = QFont()
             f.setBold(True)
-            f.setPixelSize(8)
+            f.setPixelSize(9)
             p.setFont(f)
-            p.setPen(QColor(skin["top_lo"]))
+            p.setPen(QColor(skin.get("mark_color") or skin["top_lo"]))
             p.drawText(QRectF(cx - 10.5, cy - 10.5, 21, 21),
                        Qt.AlignmentFlag.AlignCenter, skin["mark"])
 
@@ -897,12 +901,24 @@ if HAVE_QT:
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawEllipse(QPointF(cx, cy), r, r)
 
-        # 大师球的双耳 / 超级球的侧凸起(画在轮廓上方,呈凸出感)
-        if skin.get("ears"):
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QColor(skin["top_lo"]))
-            p.drawEllipse(QPointF(cx - 7, cy - r + 5.5), 5, 5)
-            p.drawEllipse(QPointF(cx + 7, cy - r + 5.5), 5, 5)
+        # 顶部徽记(大师球的 M): 画在数据文字上方,不与按钮/文字重叠
+        emblem = skin.get("emblem")
+        emblem_h = r - band_h / 2 - 13.0
+        if emblem:
+            ef = QFont()
+            ef.setBold(True)
+            es = 14
+            while es >= 8:
+                ef.setPixelSize(es)
+                if QFontMetrics(ef).horizontalAdvance(emblem) <= 2 * r - 8:
+                    break
+                es -= 1
+            p.setFont(ef)
+            p.setPen(QColor(skin.get("emblem_color", "#ffffff")))
+            p.drawText(QRectF(cx - r, cy - r + 1, 2 * r, emblem_h - 1),
+                       Qt.AlignmentFlag.AlignCenter, emblem)
+
+        # 超级球的侧凸起(画在轮廓上方,呈凸出感)
         if skin.get("bumps"):
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QColor("#e3350d"))
@@ -913,11 +929,14 @@ if HAVE_QT:
             p.drawEllipse(QPointF(cx + r - bdx, cy - r + bdy), br, br)
 
         if text:
-            font = _FONT_CACHE.get(text)
+            # 有徽记的球(大师球)文字下移避开徽记,字号起点也更小
+            text_area = QRectF(cx - r, cy - r + (emblem_h + 1 if emblem else 0),
+                               2 * r, (13.0 if emblem else r - band_h / 2))
+            font = _FONT_CACHE.get((text, bool(emblem)))
             if font is None:
                 font = QFont()
                 font.setBold(True)
-                size = 13
+                size = 11 if emblem else 13
                 # 顶部半圆的实际可用宽度(球径减去两侧边距),比固定 48px 更宽松
                 max_w = max(40.0, 2 * r - 10)
                 while size >= 6:  # 最小 6pt,长金额/长数字也能完整放下
@@ -926,13 +945,12 @@ if HAVE_QT:
                         break
                     size -= 1
                 if len(_FONT_CACHE) < 64:
-                    _FONT_CACHE[text] = font
+                    _FONT_CACHE[(text, bool(emblem))] = font
             p.setFont(font)
-            text_rect = QRectF(cx - r, cy - r, 2 * r, r - band_h / 2)
             p.setPen(QColor(0, 0, 0, 90))
-            p.drawText(text_rect.translated(0, 1), Qt.AlignmentFlag.AlignCenter, text)
+            p.drawText(text_area.translated(0, 1), Qt.AlignmentFlag.AlignCenter, text)
             p.setPen(QColor(255, 255, 255))
-            p.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, text)
+            p.drawText(text_area, Qt.AlignmentFlag.AlignCenter, text)
         p.restore()
 
     def make_pokeball_icon(skin_name=None) -> QIcon:
@@ -986,6 +1004,11 @@ if HAVE_QT:
 
         def paintEvent(self, ev):
             p = QPainter(self)
+            # repaint() 不会自动清背景: 先整体清空,任何残留像素都不可能存活
+            # (X11/Wayland 上切换皮肤后旧皮肤滞留就是这类残留)
+            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+            p.fillRect(self.rect(), Qt.GlobalColor.transparent)
+            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
             if self._gap <= 0:
                 # 合拢态: 整球一次画完
                 draw_pokeball(p, QRectF(0, 0, BALL_SIZE, BALL_SIZE),
@@ -1129,13 +1152,13 @@ if HAVE_QT:
                 cx = BALL_SIZE / 2
                 bdx = float(skin.get("bump_dx") or 0)
                 bdy = float(skin.get("bump_dy") or 0)
-                size = int(2 * bump_r) + 3  # 各向外扩 1px,吸收栅格化误差
-                by = int(cx - r + bdy - bump_r - 1) + ball_y
+                size = int(2 * bump_r) + 5  # 各向外扩 2px,吸收栅格化/AA 误差
+                by = int(cx - r + bdy - bump_r - 2) + ball_y
                 region |= QRegion(
-                    QRect(int(cx - r + bdx - bump_r) - 1, by, size, size),
+                    QRect(int(cx - r + bdx - bump_r) - 2, by, size, size),
                     QRegion.RegionType.Ellipse)
                 region |= QRegion(
-                    QRect(int(cx + r - bdx - bump_r) - 1 + gap, by, size, size),
+                    QRect(int(cx + r - bdx - bump_r) - 2 + gap, by, size, size),
                     QRegion.RegionType.Ellipse)
             return region
 
