@@ -114,6 +114,27 @@ fn open_with_default_app(path: &Path) -> Result<(), String> {
 // 前端命令
 // --------------------------------------------------------------------------
 
+/// 运行平台: windows / x11 / wayland(影响窗口移动能力与吸附)
+#[tauri::command]
+fn get_platform() -> String {
+    #[cfg(windows)]
+    {
+        return "windows".into();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let backend = std::env::var("GDK_BACKEND").unwrap_or_default();
+        if std::env::var("WAYLAND_DISPLAY").is_ok() && backend.to_lowercase() != "x11" {
+            return "wayland".into();
+        }
+        return "x11".into();
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        "other".into()
+    }
+}
+
 #[tauri::command]
 fn get_config(state: tauri::State<AppState>) -> ConfigPayload {
     build_payload(state.inner())
@@ -356,6 +377,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_config,
+            get_platform,
             fetch_usage,
             fetch_conversations,
             edit_config,

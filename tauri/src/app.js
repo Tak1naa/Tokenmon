@@ -16,6 +16,7 @@ const $ = (id) => document.getElementById(id);
 
 const state = {
   gw: null,
+  platform: "x11", // windows / x11 / wayland
   configPath: "",
   skin: DEFAULT_SKIN,
   open: false,
@@ -227,6 +228,15 @@ async function onPointerMove(e) {
       state.docked = null; // 拖动即解除吸附
       $("stage").className = "";
     }
+    if (state.platform === "wayland") {
+      // Wayland 无程序化移动 API, 交给系统拖动(XDG 协议)
+      try {
+        await appWindow.startDragging();
+      } catch (err) {
+        /* 忽略: 部分合成器不支持 */
+      }
+      return;
+    }
     const nx = state.press.wx + dx;
     const ny = state.press.wy + dy;
     await setWindow(state.press.w, state.press.h, nx, ny);
@@ -246,6 +256,7 @@ async function onPointerUp() {
 
 async function maybeSnap() {
   if (state.open) return;
+  if (state.platform === "wayland") return; // Wayland 无法程序化移动窗口
   const mon = await appWindow.currentMonitor();
   if (!mon) return;
   const wa = mon.workArea;
@@ -620,6 +631,7 @@ async function init() {
 
   // 配置与初始绘制
   const payload = await invoke("get_config");
+  state.platform = await invoke("get_platform");
   applyConfig(payload);
   const pos = await appWindow.outerPosition();
   const f = await sf();
