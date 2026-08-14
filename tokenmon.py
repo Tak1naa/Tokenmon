@@ -783,6 +783,8 @@ if HAVE_QT:
     QLabel[cls="status"] { color: #6e7681; font-size: 11px; }
     QLabel[cls="row-label"] { color: #c8cdd4; font-size: 13px; }
     QLabel[cls="row-value"] { color: #eef0f3; font-size: 15px; font-weight: 600; }
+    QLabel[cls="stat-label"] { color: #8b93a1; font-size: 11px; }
+    QLabel[cls="stat-value"] { color: #eef0f3; font-size: 12px; font-weight: 600; }
     QLabel[cls="detail-label"] { color: #8b93a1; font-size: 12px; }
     QLabel[cls="detail-value"] { color: #eef0f3; font-size: 13px; }
     QLabel[cls="conv-header"] { color: #e3350d; font-size: 12px; font-weight: 700; }
@@ -1045,7 +1047,7 @@ if HAVE_QT:
         skin_changed = Signal(str)
 
         PANEL_GAP = 6
-        PANEL_WIDTH = 200  # 竖长窗口: 窗口宽度 = 面板宽度(窄而高)
+        PANEL_WIDTH = 72  # 竖长窗口: 窗口宽度 = 面板宽度 ≈ 球宽(两半球吸附在面板上)
 
         def __init__(self):
             super().__init__(None,
@@ -1094,7 +1096,8 @@ if HAVE_QT:
                 self._update_mask()
                 return
             # 上下开合: 上半球留在窗口顶部,下半球下移 gap,面板在中间展开。
-            # X11/Windows: 窗口整体上移 gap/2 → 球心在屏幕上保持原位(始终居中);
+            # 球 widget 始终在窗口 x=0 —— 打开时球不产生任何水平平移;
+            # X11/Windows: 窗口整体上移 gap/2 → 球心在屏幕上保持原位;
             # Wayland 不能移动窗口,球随窗口内布局下移(尽力而为)。
             ph = self._panel_h
             m = self.PANEL_GAP
@@ -1105,7 +1108,7 @@ if HAVE_QT:
                 self.move(self._base_pos - QPoint(0, int(round(total / 2 * t))))
             self.setFixedSize(self.PANEL_WIDTH, max(h, BALL_SIZE))
             self._ball.gap = gap
-            self._ball.move((self.PANEL_WIDTH - BALL_SIZE) // 2, 0)
+            self._ball.move(0, 0)
             if self._panel is not None:
                 self._panel.setVisible(True)
                 self._panel.move(0, m + BALL_SIZE // 2)  # 面板位于两半之间,窗口内位置恒定
@@ -1302,39 +1305,22 @@ if HAVE_QT:
             v.setContentsMargins(12, 10, 12, 10)
             v.setSpacing(5)
 
+            # 窄面板表头: 只有居中标题(—收起/×退出按钮放不下,球点击收起、托盘/右键退出)
             hdr = QHBoxLayout()
-            hdr.setSpacing(6)
-            self._dot = QLabel("●")
-            self._dot.setProperty("cls", "dot")
+            hdr.addStretch(1)
             title = QLabel("TokenMon")
             title.setProperty("cls", "caption")
-            self._interval_label = QLabel(f"⟳ {self._interval:.0f}s")
-            self._interval_label.setProperty("cls", "caption")
-            btn_collapse = QPushButton("—")
-            btn_collapse.setProperty("cls", "btn")
-            btn_collapse.setToolTip("收起(回到精灵球)")
-            btn_collapse.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn_collapse.clicked.connect(self.collapsed.emit)
-            btn_quit = QPushButton("×")
-            btn_quit.setProperty("cls", "btn")
-            btn_quit.setToolTip("退出 TokenMon")
-            btn_quit.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn_quit.clicked.connect(self.quit_requested.emit)
-            hdr.addWidget(self._dot)
             hdr.addWidget(title)
             hdr.addStretch(1)
-            hdr.addWidget(self._interval_label)
-            hdr.addWidget(btn_collapse)
-            hdr.addWidget(btn_quit)
             v.addLayout(hdr)
 
-            # 三个主指标行; 按网关类型预隐藏拿不到的指标
-            # (deepseek/openrouter 无 token/缓存统计, litellm 无缓存字段)
+            # 三个主指标(竖排: 标签在上、数值在下,窄面板放不下左右布局);
+            # 按网关类型预隐藏拿不到的指标(deepseek/openrouter 无 token/缓存, litellm 无缓存)
             self._row_keys = ["total", "cache", "cost"]
             self._rows = {}
             for key, label in (("total", "Token 用量"),
                                ("cache", "缓存命中"), ("cost", "费用")):
-                self._rows[key] = self._add_row(v, label)
+                self._rows[key] = self._add_stat(v, label)
             self._hidden_by_config = set()
             gtype = str(self._cfg["gateway"].get("type", "")).lower()
             if gtype in ("deepseek", "openrouter"):
@@ -1362,19 +1348,21 @@ if HAVE_QT:
             self._btn_skin.setToolTip("切换精灵球皮肤(精灵球/大师球/超级球/高级球)")
             self._btn_skin.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self._btn_skin.clicked.connect(self._show_skins)
-            # 按钮右对齐: 右缘与上方参数行的数值右缘对齐; 状态文字单独一行
-            # (竖长窗口放不下按钮+状态同行)
+            # 三个按钮竖排(窄面板放不下横排),撑满整行宽度
             for btn in (self._btn_details, self._btn_convs, self._btn_skin):
-                btn.setFixedHeight(22)  # 与参数行同高,行距一致
-            foot.addStretch(1)
-            foot.addWidget(self._btn_details)
-            foot.addWidget(self._btn_convs)
-            foot.addWidget(self._btn_skin)
-            v.addLayout(foot)
+                btn.setFixedHeight(22)
+                v.addWidget(btn)
+            # 状态行: 状态点 + 状态文字(省略显示,完整内容在 tooltip)
+            status_row = QHBoxLayout()
+            status_row.setSpacing(4)
+            self._dot = QLabel("●")
+            self._dot.setProperty("cls", "dot")
             self._status = QLabel("启动中…")
             self._status.setProperty("cls", "status")
             self._status.setToolTip("")
-            v.addWidget(self._status)
+            status_row.addWidget(self._dot)
+            status_row.addWidget(self._status, 1)
+            v.addLayout(status_row)
 
             # 最近对话面板(默认收起)
             self._convs_panel = QFrame()
@@ -1406,20 +1394,21 @@ if HAVE_QT:
             self._convs_panel.hide()
             v.addWidget(self._convs_panel)
 
-            self.setFixedWidth(200)  # 竖长窗口: 面板与窗口同宽
+            self.setFixedWidth(72)  # 竖长窗口: 面板≈球宽,两半球吸附在面板上
 
-        def _add_row(self, parent, label: str):
+        def _add_stat(self, parent, label: str):
+            """竖排统计块: 标签在上、数值在下(窄面板布局)。"""
             row = QWidget()
-            h = QHBoxLayout(row)
-            h.setContentsMargins(0, 0, 0, 0)
+            v = QVBoxLayout(row)
+            v.setContentsMargins(0, 0, 0, 0)
+            v.setSpacing(0)
             lbl = QLabel(label)
-            lbl.setProperty("cls", "row-label")
+            lbl.setProperty("cls", "stat-label")
             val = QLabel("—")
-            val.setProperty("cls", "row-value")
-            val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            h.addWidget(lbl)
-            h.addStretch(1)
-            h.addWidget(val)
+            val.setProperty("cls", "stat-value")
+            val.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            v.addWidget(lbl)
+            v.addWidget(val)
             parent.addWidget(row)
             return row, val
 
@@ -1448,16 +1437,16 @@ if HAVE_QT:
             if self._balance_row is not None:
                 return
             row = QWidget()
-            h = QHBoxLayout(row)
-            h.setContentsMargins(0, 0, 0, 0)
+            v = QVBoxLayout(row)
+            v.setContentsMargins(0, 0, 0, 0)
+            v.setSpacing(0)
             lbl = QLabel("余额")
-            lbl.setProperty("cls", "row-label")
+            lbl.setProperty("cls", "stat-label")
             self._balance_val = QLabel("—")
-            self._balance_val.setProperty("cls", "row-value")
-            self._balance_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            h.addWidget(lbl)
-            h.addStretch(1)
-            h.addWidget(self._balance_val)
+            self._balance_val.setProperty("cls", "stat-value")
+            self._balance_val.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            v.addWidget(lbl)
+            v.addWidget(self._balance_val)
             # 插在最后一个可见主指标行之后(行可能被隐藏,不能写死索引)
             pos = 1 + sum(1 for k in self._row_keys
                           if self._rows[k][0].parent() is not None)
@@ -1556,7 +1545,7 @@ if HAVE_QT:
             # 状态在左、按钮在右: 超长时中间省略,完整内容放 tooltip
             self._status.setToolTip(text)
             self._status.setText(QFontMetrics(self._status.font()).elidedText(
-                text, Qt.TextElideMode.ElideMiddle, 160))
+                text, Qt.TextElideMode.ElideMiddle, 45))
             if error != self._dot_err:
                 self._dot_err = error
                 self._dot.setProperty("err", error)
