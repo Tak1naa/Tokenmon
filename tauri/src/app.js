@@ -319,10 +319,10 @@ function updateBallText() {
   const el = $("ball-text");
   const t = ballTextValue();
   el.textContent = t;
-  // 字号自适应: 球 32px 显示尺寸, 上半球可用宽度 ~30px
-  let size = 11;
+  // 字号自适应: 球 64px 显示尺寸, 上半球可用宽度 ~56px
+  let size = 13;
   el.style.fontSize = size + "px";
-  while (size > 5 && el.scrollWidth > 30) {
+  while (size > 6 && el.scrollWidth > 56) {
     size -= 1;
     el.style.fontSize = size + "px";
   }

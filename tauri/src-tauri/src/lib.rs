@@ -235,7 +235,7 @@ fn capture_window(app: &tauri::AppHandle, path: &str) {
             let w = webview.inner(); // webkit2gtk::WebView
             w.snapshot(
                 webkit2gtk::SnapshotRegion::FullDocument,
-                webkit2gtk::SnapshotOptions::empty(),
+                webkit2gtk::SnapshotOptions::TRANSPARENT_BACKGROUND,
                 None::<&webkit2gtk::gio::Cancellable>,
                 move |res: Result<cairo::Surface, webkit2gtk::glib::Error>| {
                     if let Ok(surface) = res {
