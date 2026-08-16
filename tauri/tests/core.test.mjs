@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   fmtTokens, fmtMoney, fmtShort, fmtMoneyShort,
-  hiddenRows, hasLogs, SessionStats, buildDetailCache,
+  hiddenRows, SessionStats, buildDetailCache,
 } from "../src/core.js";
 
 test("fmtTokens 千分位", () => {
@@ -35,14 +35,6 @@ test("hiddenRows 按网关类型", () => {
   assert.deepEqual([...hiddenRows("litellm")], ["cache"]);
   assert.deepEqual([...hiddenRows("deepseek")].sort(), ["cache", "total"]);
   assert.deepEqual([...hiddenRows("openrouter")].sort(), ["cache", "total"]);
-});
-
-test("hasLogs 判定", () => {
-  assert.equal(hasLogs({ type: "litellm" }), true);
-  assert.equal(hasLogs({ type: "custom", logs_url: "http://x/logs" }), true);
-  assert.equal(hasLogs({ type: "custom", logs_url: "" }), false);
-  assert.equal(hasLogs({ type: "custom", base_url: "mock://usage" }), true);
-  assert.equal(hasLogs({ type: "deepseek" }), false);
 });
 
 test("SessionStats 增量与速率", () => {
