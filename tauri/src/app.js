@@ -4,7 +4,7 @@
 import {
   SKINS, DEFAULT_SKIN, BALL, PANEL_W, SNAP_TH, ANIM_STEPS, ANIM_MS,
   fmtTokens, fmtMoney, fmtShort, fmtMoneyShort,
-  hiddenRows, hasLogs, SessionStats, buildDetailCache, nowTime,
+  hiddenRows, SessionStats, buildDetailCache, nowTime,
 } from "./core.js";
 
 const { invoke } = window.__TAURI__.core;
@@ -23,10 +23,9 @@ const state = {
   open: false,
   docked: null,          // null | 'left' | 'right'
   animTimer: null,
+  pendingToggle: false, // 动画期间的排队切换(快速连点)
   alwaysOnTop: true,
   usage: null,
-  convs: [],
-  convsVisible: false,
   hidden: new Set(),
   logsOn: false,
   stats: new SessionStats(),
@@ -166,7 +165,13 @@ async function drawOpen(p, applyMotion = true) {
       halfStyle("translateY(0px)", "translateY(" + gap + "px)"); // 下半容器从 top:32 下移
     }
     const pos = windowPosFromBase(state.basePos, w, h);
-    await setWindow(w, h, pos.x, pos.y);
+    try {
+      await setWindow(w, h, pos.x, pos.y);
+      const s = await appWindow.outerSize();
+      invoke("tm_report", { rect: "RESIZE w=" + s.width + " h=" + s.height });
+    } catch (err) {
+      invoke("tm_report", { rect: "RESIZE-ERR " + String(err) });
+    }
   }
   // 注意: 动画期间不读回 outerPosition 更新 basePos —— X11 下 outerPosition
   // 含 CSD 装饰偏移, 每帧读回会导致窗口逐帧漂移(球向上跳)。
@@ -206,15 +211,22 @@ async function syncBasePos() {
 }
 
 function finishAnim() {
+  invoke("tm_report", { rect: "ANIM-FINISH pending=" + state.pendingToggle });
   state.animTimer = null;
   setHalfTransition(false);
   setPanelTransition(false);
   nudgeInput(); // 尺寸变化后重新激活输入(Linux input region 失效)
-  syncBasePos();
+  syncBasePos().catch(() => {});
+  // 动画期间被吞的切换操作(快速连点)在动画完成后执行
+  if (state.pendingToggle) {
+    state.pendingToggle = false;
+    togglePanel();
+  }
 }
 
 function openPanel() {
   if (state.open || state.animTimer) return;
+  invoke("tm_report", { rect: "ANIM-OPEN" });
   state.panelH = measurePanel();
   state.open = true;
   // 1) DOM 起始态: 半片合拢, 面板 0 高
@@ -223,22 +235,26 @@ function openPanel() {
   panel.style.height = "0px";
   panel.style.display = "block";
   // 2) 窗口一次到位(球心不动), 布局到展开态(不动半片/面板, 由过渡接管)
-  drawOpen(1, false).then(() => {
-    // 3) 触发 CSS 过渡: 下半球分离 + 面板展开
-    setHalfTransition(true);
-    setPanelTransition(true);
-    requestAnimationFrame(() => {
-      const gap = state.docked ? PANEL_W : state.panelH;
-      if (state.docked === "left") halfStyle("translateY(-" + gap + "px)", "translateY(0px)");
-      else halfStyle("translateY(0px)", "translateY(" + gap + "px)");
-      panel.style.height = state.panelH + "px";
+  //    无论窗口 resize 是否完成, 都触发过渡(resize 失败只影响窗口尺寸,
+  //    不影响开合状态机)
+  drawOpen(1, false)
+    .catch(() => {})
+    .then(() => {
+      setHalfTransition(true);
+      setPanelTransition(true);
+      requestAnimationFrame(() => {
+        const gap = state.docked ? PANEL_W : state.panelH;
+        if (state.docked === "left") halfStyle("translateY(-" + gap + "px)", "translateY(0px)");
+        else halfStyle("translateY(0px)", "translateY(" + gap + "px)");
+        panel.style.height = state.panelH + "px";
+      });
     });
-  });
-  state.animTimer = setTimeout(finishAnim, OPEN_MS + 60);
+  state.animTimer = setTimeout(finishAnim, OPEN_MS + 80);
 }
 
 function closePanel() {
   if (!state.open || state.animTimer) return;
+  invoke("tm_report", { rect: "ANIM-CLOSE" });
   // 1) CSS 过渡收拢: 下半球归位 + 面板收起
   setHalfTransition(true);
   setPanelTransition(true);
@@ -247,14 +263,31 @@ function closePanel() {
     halfStyle("translateY(0px)", "translateY(0px)");
     panel.style.height = "0px";
   });
-  state.animTimer = setTimeout(async () => {
+  // 2) 过渡结束后窗口回到 64x64(容错: 即使 resize 失败也释放状态机)
+  state.animTimer = setTimeout(() => {
     state.open = false;
-    await drawClosed(); // 窗口回到 64x64
-    finishAnim();
-  }, OPEN_MS + 60);
+    if (state.pendingToggle) {
+      // 快速连点反向: 窗口保持展开尺寸直接反向动画, 避免 64->400
+      // 紧邻 resize 被 GTK 合并吞掉(那会导致"打不开")
+      state.pendingToggle = false;
+      state.animTimer = null;
+      openPanel();
+      return;
+    }
+    drawClosed()
+      .catch(() => {})
+      .then(finishAnim);
+  }, OPEN_MS + 80);
 }
 
 function togglePanel() {
+  if (state.animTimer) {
+    // 动画进行中: 排队取反, 动画完成后执行(避免点击被吞)
+    invoke("tm_report", { rect: "ANIM-PENDING" });
+    state.pendingToggle = true;
+    return;
+  }
+  invoke("tm_report", { rect: "ANIM-TOGGLE open=" + state.open });
   if (state.open) closePanel();
   else openPanel();
 }
@@ -395,51 +428,12 @@ function applyUsage(u) {
   setStatus(base + " · 更新于 " + nowTime());
 }
 
-function applyConvs(convs) {
-  state.convs = convs;
-  const box = $("convs-box");
-  box.innerHTML = "";
-  const status = $("convs-status");
-  if (!convs.length) {
-    const d = document.createElement("div");
-    d.className = "conv-line";
-    d.innerHTML = '<span class="cp" style="color:#6e7681">无数据</span>';
-    box.appendChild(d);
-    status.textContent = "无数据";
-    return;
-  }
-  for (const c of convs) {
-    const line = document.createElement("div");
-    line.className = "conv-line";
-    const p = document.createElement("span");
-    p.className = "cp";
-    p.textContent = c.prompt;
-    const t = document.createElement("span");
-    t.className = "ct";
-    t.textContent = fmtTokens(c.tokens);
-    line.appendChild(p);
-    line.appendChild(t);
-    box.appendChild(line);
-  }
-  status.textContent = "共 " + convs.length + " 条";
-}
-
 async function refreshNow() {
   try {
     const u = await invoke("fetch_usage");
     applyUsage(u);
   } catch (e) {
     setStatus("错误: " + String((e && e.message) || e).slice(0, 60), true);
-  }
-}
-
-async function fetchConvs() {
-  if (!state.logsOn) return;
-  try {
-    const convs = await invoke("fetch_conversations");
-    applyConvs(convs);
-  } catch (e) {
-    /* 对话列表失败静默降级 */
   }
 }
 
@@ -603,6 +597,7 @@ function settingsItems() {
 // ---------------------------------------------------------------------------
 
 async function handleTray(event) {
+  invoke("tm_report", { rect: "TRAY-EVT:" + event });
   switch (event) {
     case "tm-toggle":
       if (state.open) closePanel();
@@ -632,16 +627,9 @@ function applyConfig(payload) {
   state.alwaysOnTop = payload.window.always_on_top;
   state.configPath = payload.config_path;
   state.hidden = hiddenRows(String(state.gw.type || ""));
-  state.logsOn = hasLogs(state.gw);
   const refreshSec = Number(state.gw.refresh_seconds || 5);
-  const logsSec = Number(state.gw.logs_refresh_seconds || 60);
   clearInterval(window.__tmPoll);
-  clearInterval(window.__tmLogs);
   window.__tmPoll = setInterval(refreshNow, refreshSec * 1000);
-  if (state.logsOn) {
-    setTimeout(fetchConvs, 1000);
-    window.__tmLogs = setInterval(fetchConvs, logsSec * 1000);
-  }
   if (payload.error) setStatus(payload.error, true);
 }
 
@@ -674,7 +662,6 @@ async function init() {
       const act = btn.dataset.act;
       const pos = btn.getBoundingClientRect();
       if (act === "details") showMenu(pos.left, pos.bottom + 4, detailsItems());
-      else if (act === "convs") toggleConvs();
       else if (act === "skin") showMenu(pos.left, pos.bottom + 4, skinItems());
       else if (act === "settings") showMenu(pos.left, pos.bottom + 4, settingsItems());
     });
@@ -685,7 +672,10 @@ async function init() {
     "tm-skin-pokeball", "tm-skin-master", "tm-skin-great", "tm-skin-ultra",
     "tm-topmost", "tm-edit-config", "tm-open-config-dir", "tm-reload-config",
   ]) {
-    listen(ev, () => handleTray(ev));
+    listen(ev, () => {
+      invoke("tm_report", { rect: "LISTEN:" + ev });
+      handleTray(ev);
+    });
   }
 
   // 配置与初始绘制
@@ -699,15 +689,6 @@ async function init() {
   updateBallText();
   nudgeInput(); // 首次显示后重新激活输入
   refreshNow();
-}
-
-function toggleConvs() {
-  state.convsVisible = !state.convsVisible;
-  $("convs").hidden = !state.convsVisible;
-  if (state.open) {
-    state.panelH = measurePanel();
-    drawOpen(1);
-  }
 }
 
 init();

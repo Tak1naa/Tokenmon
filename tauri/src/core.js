@@ -62,16 +62,6 @@ export function hiddenRows(gtype) {
   return new Set();
 }
 
-export function hasLogs(gw) {
-  const gtype = String(gw.type || "").toLowerCase();
-  const base = String(gw.base_url || "");
-  return (
-    gtype === "litellm" ||
-    (gtype === "custom" && Boolean(String(gw.logs_url || "").trim())) ||
-    base.startsWith("mock://")
-  );
-}
-
 // ---------------- 会话统计(移植 _apply_usage 的增量/速率部分) ----------------
 
 export class SessionStats {

@@ -13,7 +13,7 @@ use tauri::{Emitter, Manager, WebviewWindow};
 use tokenmon_core::config::{
     config_dir, config_path, load_config, AppConfig, GatewayConfig, WindowConfig, DEFAULT_CONFIG,
 };
-use tokenmon_core::{Conversation, Usage};
+use tokenmon_core::Usage;
 
 pub struct AppState {
     cfg: Mutex<AppConfig>,
@@ -149,11 +149,6 @@ fn get_config(state: tauri::State<AppState>) -> ConfigPayload {
 #[tauri::command]
 fn fetch_usage(state: tauri::State<AppState>) -> Result<Usage, String> {
     tokenmon_core::fetch_usage(&state.gateway()).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn fetch_conversations(state: tauri::State<AppState>) -> Result<Vec<Conversation>, String> {
-    tokenmon_core::fetch_conversations(&state.gateway()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -395,6 +390,25 @@ pub fn run() {
                     // 动画中间帧截图(过渡进行中)
                     std::thread::sleep(sleep(110));
                     capture_window(&handle, "/tmp/tmtest/shot_anim_mid.png");
+                    // 快速连点模拟: 100ms 间隔 3 次 toggle(动画中排队)
+                    if std::env::var("TOKENMON_SMOKE_RAPID").is_ok() {
+                        std::thread::sleep(sleep(400));
+                        let n: usize = std::env::var("TOKENMON_SMOKE_RAPID_N")
+                            .ok()
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(3);
+                        for _ in 0..n {
+                            let _ = handle.emit("tm-toggle", ());
+                            std::thread::sleep(sleep(100));
+                        }
+                        for j in 0..6 {
+                            std::thread::sleep(sleep(300));
+                            if let Some(win) = handle.get_webview_window("main") {
+                                let s = win.outer_size().unwrap_or_default();
+                                eprintln!("[rapid] t+{}ms w={}", (j + 1) * 300, s.width);
+                            }
+                        }
+                    }
                     if std::env::var("TOKENMON_SMOKE_CLICK").is_ok() {
                         std::thread::sleep(sleep(600));
                         if let Some(win) = handle.get_webview_window("main") {
@@ -439,7 +453,6 @@ pub fn run() {
             get_platform,
             tm_report,
             fetch_usage,
-            fetch_conversations,
             edit_config,
             open_config_dir,
             reload_config,

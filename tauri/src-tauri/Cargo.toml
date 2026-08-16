@@ -22,3 +22,10 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "2"
 cairo-rs = { version = "0.18", features = ["png"] }
+
+# ---- 体积优化: 十几兆目标 ----
+[profile.release]
+opt-level = "s"      # 优化体积
+lto = true           # 链接时优化, 删除未用代码(对话历史等)
+codegen-units = 1    # 更好优化
+strip = true         # 自动剥离符号(免手动 strip)
