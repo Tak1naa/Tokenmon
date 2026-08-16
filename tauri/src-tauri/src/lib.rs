@@ -366,7 +366,8 @@ pub fn run() {
             let state = app.state::<AppState>();
             let top = state.cfg.lock().unwrap().window.always_on_top;
             set_tray_topmost_checked(top);
-            // 冒烟测试钩子: TOKENMON_SMOKE_OPEN=1 时自动开合并截图
+            // 冒烟测试钩子(仅 Linux): TOKENMON_SMOKE_OPEN=1 时自动开合并截图
+            #[cfg(target_os = "linux")]
             if std::env::var("TOKENMON_SMOKE_OPEN").is_ok() {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
