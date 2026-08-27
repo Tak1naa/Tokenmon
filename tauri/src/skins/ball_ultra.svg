@@ -1,88 +1,13 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg width="256" height="256"
- viewBox="64 64 128 128"
- xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.2" baseProfile="tiny">
-<title>Qt SVG Document</title>
-<desc>Generated with Qt</desc>
-<defs>
-<linearGradient gradientUnits="userSpaceOnUse" x1="128" y1="65.5" x2="128" y2="128" id="gradient1">
-    <stop offset="0" stop-color="#3d4046" stop-opacity="1" />
-    <stop offset="1" stop-color="#17181c" stop-opacity="1" />
-</linearGradient>
-</defs>
-<g fill="none" stroke="black" stroke-width="1" fill-rule="evenodd" stroke-linecap="square" stroke-linejoin="bevel" >
-
-<g fill="none" stroke="#000000" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-</g>
-
-<g fill="url(#gradient1)" stroke="none" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-<path vector-effect="none" fill-rule="evenodd" d="M65.5,128 L190.5,128 C190.5,93.4822 162.518,65.5 128,65.5 C93.4822,65.5 65.5,93.4822 65.5,128 "/>
-</g>
-
-<g fill="#f8f9fa" fill-opacity="1" stroke="none" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-<path vector-effect="none" fill-rule="evenodd" d="M65.5,128 C65.5,162.518 93.4822,190.5 128,190.5 C162.518,190.5 190.5,162.518 190.5,128 L65.5,128"/>
-</g>
-
-<g fill="none" stroke="#000000" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-</g>
-
-<g fill="none" stroke="#000000" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-</g>
-
-<g fill="#ffd733" fill-opacity="1" stroke="none" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-<rect x="98" y="74.5" width="60" height="5"/>
-</g>
-
-<g fill="none" stroke="#000000" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-</g>
-
-<g fill="#1e2023" fill-opacity="1" stroke="none" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-<rect x="65.5" y="124" width="125" height="8"/>
-</g>
-
-<g fill="#ffffff" fill-opacity="0.0705882" stroke="none" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-<rect x="65.5" y="124" width="125" height="1"/>
-</g>
-
-<g fill="#000000" fill-opacity="0.156863" stroke="none" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-<rect x="65.5" y="131" width="125" height="1"/>
-</g>
-
-<g fill="#f8f9fa" fill-opacity="1" stroke="#3a3d45" stroke-opacity="1" stroke-width="2" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-<circle cx="128" cy="128" r="20"/>
-</g>
-
-<g fill="none" stroke="#26282d" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-<circle cx="128" cy="128" r="62.5"/>
-</g>
-
-<g fill="none" stroke="#000000" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
-font-family="Adwaita Sans" font-size="11" font-weight="400" font-style="normal" 
->
-</g>
-</g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>Ultra Ball</title><defs>
+    <radialGradient id="black" cx="36%" cy="16%" r="90%"><stop stop-color="#59626d"/><stop offset=".37" stop-color="#222935"/><stop offset=".78" stop-color="#0c1018"/><stop offset="1" stop-color="#030407"/></radialGradient>
+    <linearGradient id="white" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff"/><stop offset=".56" stop-color="#ecf0f4"/><stop offset="1" stop-color="#aab4c0"/></linearGradient>
+    <linearGradient id="rim" x1="0" x2="0" y2="1"><stop stop-color="#727c88"/><stop offset=".45" stop-color="#222832"/><stop offset="1" stop-color="#050609"/></linearGradient>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="5" stdDeviation="4" flood-opacity=".48"/></filter>
+  </defs><g filter="url(#sh)">
+    <circle cx="128" cy="128" r="112" fill="url(#white)" stroke="#080b10" stroke-width="9"/><path d="M21 128a107 107 0 0 1 214 0H21Z" fill="url(#black)"/>
+    <path d="M49 92h38l22 36H72Z M207 92h-38l-22 36h37Z" fill="#ffd52b" stroke="#8a6100" stroke-width="3" stroke-linejoin="round"/><path d="M53 90h30l-8 9H48ZM203 90h-30l8 9h27Z" fill="#fff09c" opacity=".72"/>
+    <path d="M31 128h194" stroke="url(#rim)" stroke-width="19"/><path d="M45 128h166" stroke="#f8fbff" stroke-width="2" opacity=".58"/><path d="M47 102a93 93 0 0 1 160-38c-45-11-111 7-157 65Z" fill="#c7d5df" opacity=".15"/>
+    <circle cx="128" cy="128" r="31" fill="url(#rim)" stroke="#050609" stroke-width="4"/><circle cx="128" cy="128" r="22" fill="#f9fbff" stroke="#8490a0" stroke-width="3"/><circle cx="120" cy="119" r="7" fill="#fff"/>
+    <path d="M48 157a84 84 0 0 0 160 0" fill="none" stroke="#fff" stroke-width="4" opacity=".37" stroke-linecap="round"/>
+  </g></svg>

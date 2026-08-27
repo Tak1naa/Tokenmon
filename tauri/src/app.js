@@ -5,6 +5,7 @@ import {
   SKINS, DEFAULT_SKIN, BALL, PANEL_W, SNAP_TH, ANIM_STEPS, ANIM_MS,
   fmtTokens, fmtMoney, fmtShort, fmtMoneyShort,
   hiddenRows, SessionStats, buildDetailCache, nowTime,
+  COMPANIONS, PET_STATES, pickCompanion, resolvePetState, petMessage,
 } from "./core.js";
 
 const { invoke } = window.__TAURI__.core;
@@ -30,10 +31,32 @@ const state = {
   logsOn: false,
   stats: new SessionStats(),
   detailCache: {},
+  companion: COMPANIONS[0],
+  companionLocked: false,
+  petState: PET_STATES.BOOT,
+  lastActivityAt: null,
   panelH: 180,
   basePos: { x: 300, y: 200 },  // 球左上角的屏幕坐标(物理)
   press: null,           // {sx, sy, wx, wy, w, h}
   moved: false,
+};
+
+const PET_MODE_TEXT = {
+  [PET_STATES.BOOT]: "等待连接",
+  [PET_STATES.IDLE]: "安静陪伴",
+  [PET_STATES.REFRESH]: "专注巡查",
+  [PET_STATES.ACTIVE]: "发现新用量",
+  [PET_STATES.ERROR]: "需要帮助",
+  [PET_STATES.REST]: "短暂休息",
+};
+
+const PET_EMOTE = {
+  [PET_STATES.BOOT]: "…",
+  [PET_STATES.IDLE]: "♥",
+  [PET_STATES.REFRESH]: "⌁",
+  [PET_STATES.ACTIVE]: "✦",
+  [PET_STATES.ERROR]: "!",
+  [PET_STATES.REST]: "z",
 };
 
 // ---------------------------------------------------------------------------
@@ -46,16 +69,66 @@ function stageBox(w, h) {
   s.style.height = h + "px";
 }
 
+function syncStageClasses() {
+  const classes = [];
+  if (state.docked) classes.push("docked-" + state.docked);
+  classes.push(state.open ? "pet-open" : "pet-idle");
+  $("stage").className = classes.join(" ");
+}
+
+function persistPetPreferences() {
+  localStorage.setItem("tokenmon.companion", state.companion.id);
+  localStorage.setItem("tokenmon.companionLocked", String(state.companionLocked));
+  localStorage.setItem("tokenmon.skin", state.skin);
+}
+
+function loadPetPreferences() {
+  const id = localStorage.getItem("tokenmon.companion");
+  const selected = COMPANIONS.find((item) => item.id === id);
+  if (selected) state.companion = selected;
+  state.companionLocked = localStorage.getItem("tokenmon.companionLocked") === "true";
+  const skin = localStorage.getItem("tokenmon.skin");
+  if (skin && SKINS[skin]) state.skin = skin;
+}
+
+function updateCompanionUI() {
+  const companion = state.companion;
+  $("companion-art").src = "companions/" + companion.id + ".svg";
+  $("companion-art").alt = companion.name;
+  $("pet-name").textContent = companion.name + " · " + companion.element + "系伙伴";
+  $("pet-message").textContent = petMessage(companion, state.petState, state.usage);
+  $("pet-mode").textContent = PET_MODE_TEXT[state.petState];
+  $("pet-emote").textContent = PET_EMOTE[state.petState];
+  $("pet-hero").dataset.state = state.petState;
+}
+
+function setPetState(next) {
+  state.petState = next;
+  updateCompanionUI();
+}
+
+function chooseCompanion(id = null) {
+  const next = id
+    ? COMPANIONS.find((item) => item.id === id) || state.companion
+    : pickCompanion(COMPANIONS, state.companion?.id, state.companionLocked);
+  if (!next) return;
+  state.companion = next;
+  persistPetPreferences();
+  updateCompanionUI();
+}
+
 // 逻辑坐标辅助: X11 下窗口系统按逻辑尺寸应用, 读取的物理值需除以 scaleFactor
 async function sf() {
   return appWindow.scaleFactor();
 }
 
-async function setWindow(w, h, x, y) {
+async function setWindow(w, h, x, y, moveWindow = false) {
   // 每帧等待 resize 完成再进入下一帧: 合成器会合并连续 resize,
   // fire-and-forget 会导致动画只剩首尾两帧(看起来没有动画)
   await appWindow.setSize(new LogicalSize(Math.round(w), Math.round(h)));
-  if (x !== undefined && y !== undefined) {
+  // 开合期间保持单窗口左上角不动。Wayland/XWayland 对重定位语义不
+  // 一致；球的居中位移改由内容动画承担。拖动和吸附仍明确请求移动。
+  if (moveWindow && x !== undefined && y !== undefined) {
     await appWindow.setPosition(new LogicalPosition(Math.round(x), Math.round(y)));
   }
 }
@@ -112,19 +185,20 @@ function basePosFromWindow(wx, wy, w, h) {
 
 async function drawClosed() {
   state.open = false;
-  $("panel").style.display = "none";
-  const st = $("stage");
-  st.className = state.docked ? "docked-" + state.docked : "";
+  const panel = $("panel");
+  panel.style.display = "none";
+  panel.classList.remove("genie-prep", "genie-expanded", "genie-closing");
+  syncStageClasses();
   const bw = $("ballwrap");
   bw.style.left = "0px";
   bw.style.top = "0px";
   halfStyle("translateY(0px)", "translateY(0px)"); // 容器自带 top 定位
   stageBox(BALL, BALL);
   const pos = windowPosFromBase(state.basePos, BALL, BALL);
-  await setWindow(BALL, BALL, pos.x, pos.y, true);
+  await setWindow(BALL, BALL, pos.x, pos.y);
 }
 
-async function drawOpen(p, applyMotion = true) {
+async function drawOpen(p, applyMotion = true, keepBallAtOrigin = false) {
   const panelH = state.panelH;
   const gap = Math.round(panelH * p);
   if (state.docked) {
@@ -150,7 +224,7 @@ async function drawOpen(p, applyMotion = true) {
   } else {
     const w = PANEL_W;
     const h = BALL + Math.round(panelH * p);
-    const cx = (PANEL_W - BALL) / 2;
+    const cx = keepBallAtOrigin ? 0 : ballOffset().x;
     stageBox(w, h);
     const bw = $("ballwrap");
     bw.style.left = cx + "px";
@@ -186,8 +260,8 @@ async function drawOpen(p, applyMotion = true) {
 // 因此改为「窗口一次到位 + 内容 CSS transition 平滑过渡」:
 // 展开时窗口立即变为最终尺寸(球心保持不动), 球体分离与面板展开由
 // CSS transition(0.28s easeOut)驱动, 平滑且不会被合成器吞掉。
-const OPEN_MS = 280;
-const OPEN_EASE = "cubic-bezier(0.33, 1, 0.68, 1)"; // easeOutCubic 近似
+const OPEN_MS = 420;
+const OPEN_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 
 function setHalfTransition(on) {
   const t = on ? ("transform " + OPEN_MS + "ms " + OPEN_EASE) : "none";
@@ -195,8 +269,20 @@ function setHalfTransition(on) {
   document.querySelector(".c-bot").style.transition = t;
 }
 
+function setBallPositionTransition(on) {
+  $("ballwrap").style.transition = on
+    ? ("left " + OPEN_MS + "ms " + OPEN_EASE)
+    : "none";
+}
+
 function setPanelTransition(on) {
-  const t = on ? ("height " + OPEN_MS + "ms " + OPEN_EASE) : "none";
+  const t = on
+    ? ("height " + OPEN_MS + "ms " + OPEN_EASE +
+       ", transform " + OPEN_MS + "ms " + OPEN_EASE +
+       ", opacity " + Math.round(OPEN_MS * .7) + "ms ease-out" +
+       ", border-radius " + OPEN_MS + "ms " + OPEN_EASE +
+       ", filter " + Math.round(OPEN_MS * .55) + "ms ease-out")
+    : "none";
   $("panel").style.transition = t;
 }
 
@@ -215,8 +301,11 @@ function finishAnim() {
   state.animTimer = null;
   setHalfTransition(false);
   setPanelTransition(false);
+  setBallPositionTransition(false);
   nudgeInput(); // 尺寸变化后重新激活输入(Linux input region 失效)
-  syncBasePos().catch(() => {});
+  // 开合期间窗口会变尺寸；部分 Wayland 合成器会把透明窗口的
+  // outerPosition 暂时报为 (0, 0)。锚点只在拖动/吸附时更新，不能在
+  // 动画结束后用这个不可靠的回读值覆盖，否则收起会跳到左上角。
   // 动画期间被吞的切换操作(快速连点)在动画完成后执行
   if (state.pendingToggle) {
     state.pendingToggle = false;
@@ -227,25 +316,34 @@ function finishAnim() {
 function openPanel() {
   if (state.open || state.animTimer) return;
   invoke("tm_report", { rect: "ANIM-OPEN" });
+  if (!state.companionLocked) chooseCompanion();
   state.panelH = measurePanel();
   state.open = true;
+  syncStageClasses();
   // 1) DOM 起始态: 半片合拢, 面板 0 高
   halfStyle("translateY(0px)", "translateY(0px)");
   const panel = $("panel");
+  panel.classList.remove("genie-closing", "genie-expanded");
+  panel.classList.add("genie-prep");
   panel.style.height = "0px";
   panel.style.display = "block";
   // 2) 窗口一次到位(球心不动), 布局到展开态(不动半片/面板, 由过渡接管)
   //    无论窗口 resize 是否完成, 都触发过渡(resize 失败只影响窗口尺寸,
   //    不影响开合状态机)
-  drawOpen(1, false)
+  // 放大窗口时先让球留在原处；下一帧再与面板一起滑到居中位置。
+  drawOpen(1, false, true)
     .catch(() => {})
     .then(() => {
       setHalfTransition(true);
       setPanelTransition(true);
+      setBallPositionTransition(true);
       requestAnimationFrame(() => {
         const gap = state.docked ? PANEL_W : state.panelH;
         if (state.docked === "left") halfStyle("translateY(-" + gap + "px)", "translateY(0px)");
         else halfStyle("translateY(0px)", "translateY(" + gap + "px)");
+        panel.classList.remove("genie-prep");
+        panel.classList.add("genie-expanded");
+        if (!state.docked) $("ballwrap").style.left = ballOffset().x + "px";
         panel.style.height = state.panelH + "px";
       });
     });
@@ -258,9 +356,13 @@ function closePanel() {
   // 1) CSS 过渡收拢: 下半球归位 + 面板收起
   setHalfTransition(true);
   setPanelTransition(true);
+  setBallPositionTransition(true);
   const panel = $("panel");
   requestAnimationFrame(() => {
     halfStyle("translateY(0px)", "translateY(0px)");
+    if (!state.docked) $("ballwrap").style.left = "0px";
+    panel.classList.remove("genie-expanded");
+    panel.classList.add("genie-closing");
     panel.style.height = "0px";
   });
   // 2) 过渡结束后窗口回到 64x64(容错: 即使 resize 失败也释放状态机)
@@ -316,7 +418,7 @@ async function onPointerMove(e) {
     state.moved = true;
     if (state.docked) {
       state.docked = null; // 拖动即解除吸附
-      $("stage").className = "";
+      syncStageClasses();
     }
     if (state.platform === "wayland") {
       // Wayland 无程序化移动 API, 交给系统拖动(XDG 协议)
@@ -404,8 +506,21 @@ function setStatus(text, error = false) {
 }
 
 function applyUsage(u) {
+  const previousUsage = state.usage;
   state.usage = u;
   state.stats.apply(u);
+  const nextPetState = resolvePetState({
+    usage: u,
+    previousUsage,
+    now: Date.now(),
+    lastActivityAt: state.lastActivityAt,
+  });
+  // The first successful sample starts the inactivity clock too. Otherwise a
+  // gateway whose numbers stay flat from launch would never reach "rest".
+  if (nextPetState === PET_STATES.ACTIVE || state.lastActivityAt === null) {
+    state.lastActivityAt = Date.now();
+  }
+  setPetState(nextPetState);
   const rows = {
     total: [u.total, fmtTokens],
     cache: [u.cache_hit, fmtTokens],
@@ -429,11 +544,13 @@ function applyUsage(u) {
 }
 
 async function refreshNow() {
+  setPetState(PET_STATES.REFRESH);
   try {
     const u = await invoke("fetch_usage");
     applyUsage(u);
   } catch (e) {
     setStatus("错误: " + String((e && e.message) || e).slice(0, 60), true);
+    setPetState(PET_STATES.ERROR);
   }
 }
 
@@ -446,6 +563,7 @@ function setSkin(name) {
   state.skin = name;
   $("half-top").src = "skins/ball_" + name + ".svg";
   $("half-bot").src = "skins/ball_" + name + ".svg";
+  persistPetPreferences();
   invoke("set_tray_skin", { skin: name }).catch(() => {});
   if (state.open) drawOpen(1);
   else drawClosed();
@@ -485,6 +603,10 @@ async function reloadConfig() {
   if (payload.error) setStatus(payload.error, true);
   else setStatus("配置已重载");
   refreshNow();
+}
+
+function showCompanionNotice() {
+  setStatus("宠物角色为非商业同人素材；详情见 companions/ATTRIBUTION.md");
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +677,7 @@ function contextItems() {
   return [
     { label: state.open ? "收起面板" : "展开面板", run: togglePanel },
     { label: "刷新", run: refreshNow },
+    { label: "伙伴", run: () => showMenu(menuPos.x, menuPos.y, companionItems()) },
     { label: "皮肤", run: () => showMenu(menuPos.x, menuPos.y, skinItems()) },
     { label: "设置", run: () => showMenu(menuPos.x, menuPos.y, settingsItems()) },
     { sep: true },
@@ -581,6 +704,30 @@ function skinItems() {
   }));
 }
 
+function companionItems() {
+  const items = [
+    { label: "随机伙伴", run: () => { state.companionLocked = false; chooseCompanion(); } },
+    {
+      label: "锁定当前伙伴",
+      checked: state.companionLocked,
+      run: () => {
+        state.companionLocked = !state.companionLocked;
+        persistPetPreferences();
+        updateCompanionUI();
+      },
+    },
+    { sep: true },
+  ];
+  for (const companion of COMPANIONS) {
+    items.push({
+      label: companion.name,
+      checked: state.companion.id === companion.id,
+      run: () => chooseCompanion(companion.id),
+    });
+  }
+  return items;
+}
+
 function settingsItems() {
   return [
     { label: "窗口置顶", checked: state.alwaysOnTop, run: toggleTopmost },
@@ -589,6 +736,8 @@ function settingsItems() {
     { label: "打开配置目录", run: openConfigDir },
     { sep: true },
     { label: "重载配置", run: reloadConfig },
+    { sep: true },
+    { label: "关于宠物素材", run: showCompanionNotice },
   ];
 }
 
@@ -662,6 +811,7 @@ async function init() {
       const act = btn.dataset.act;
       const pos = btn.getBoundingClientRect();
       if (act === "details") showMenu(pos.left, pos.bottom + 4, detailsItems());
+      else if (act === "companion") showMenu(pos.left, pos.bottom + 4, companionItems());
       else if (act === "skin") showMenu(pos.left, pos.bottom + 4, skinItems());
       else if (act === "settings") showMenu(pos.left, pos.bottom + 4, settingsItems());
     });
@@ -679,6 +829,10 @@ async function init() {
   }
 
   // 配置与初始绘制
+  loadPetPreferences();
+  $("half-top").src = "skins/ball_" + state.skin + ".svg";
+  $("half-bot").src = "skins/ball_" + state.skin + ".svg";
+  updateCompanionUI();
   const payload = await invoke("get_config");
   state.platform = await invoke("get_platform");
   applyConfig(payload);
@@ -687,6 +841,17 @@ async function init() {
   state.basePos = { x: pos.x / f, y: pos.y / f };
   await drawClosed();
   updateBallText();
+  clearInterval(window.__tmPetIdle);
+  window.__tmPetIdle = setInterval(() => {
+    if (state.petState === PET_STATES.ERROR || state.petState === PET_STATES.REFRESH) return;
+    const next = resolvePetState({
+      usage: state.usage,
+      previousUsage: state.usage,
+      now: Date.now(),
+      lastActivityAt: state.lastActivityAt,
+    });
+    if (next !== state.petState) setPetState(next);
+  }, 30_000);
   nudgeInput(); // 首次显示后重新激活输入
   refreshNow();
 }

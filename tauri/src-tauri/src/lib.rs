@@ -221,6 +221,16 @@ fn hide_ball(window: WebviewWindow) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())
 }
 
+/// 恢复被前端“关闭”按钮隐藏的单一主窗口。
+/// 托盘菜单和左键均直接调用它，避免隐藏 WebView 尚未接到前端事件时无法拉起。
+fn reveal_main(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    }
+}
+
 #[tauri::command]
 fn quit(app: tauri::AppHandle) {
     app.exit(0);
@@ -309,7 +319,10 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .tooltip("TokenMon")
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "toggle" => emit_to_main(app, "tm-toggle"),
+            "toggle" => {
+                reveal_main(app);
+                emit_to_main(app, "tm-toggle");
+            }
             "refresh" => emit_to_main(app, "tm-refresh"),
             "skin-pokeball" => emit_to_main(app, "tm-skin-pokeball"),
             "skin-master" => emit_to_main(app, "tm-skin-master"),
@@ -335,9 +348,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                     if win.is_visible().unwrap_or(true) {
                         let _ = win.hide();
                     } else {
-                        let _ = win.show();
-                        let _ = win.unminimize();
-                        let _ = win.set_focus();
+                        reveal_main(&app);
                     }
                 }
             }

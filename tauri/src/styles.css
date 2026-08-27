@@ -43,6 +43,20 @@ html, body {
 }
 #ballwrap:active { cursor: grabbing; }
 
+/* 只有内层呼吸，外层仍由吸附态负责旋转，避免 transform 互相覆盖。 */
+#ball-core {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+}
+#stage.pet-idle #ball-core {
+  animation: breathe 3.8s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-1px) scale(1.025); }
+}
+
 /* 上下半片: overflow 容器各露一半, img 上移露出下半(不依赖 clip-path) */
 .clip {
   position: absolute;
@@ -89,16 +103,37 @@ html, body {
   top: 32px;
   left: 0;
   width: 200px;
-  background: var(--dark);
+  background: linear-gradient(145deg, #20252f 0%, var(--dark) 52%);
   color: var(--text);
   display: none;
   overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
+  transform-origin: 50% 0;
+  will-change: height, transform, opacity, border-radius, filter;
+}
+
+/* 轻量 Genie：窗口尺寸一次到位，面板从球的中线被拉出/吸回。
+   不使用逐帧网格形变，避免透明 WebView 在 Wayland 上产生额外合成层。 */
+#panel.genie-prep {
+  opacity: 0;
+  transform: translateY(-17px) scaleX(.16) scaleY(.035);
+  border-radius: 36px;
+  filter: blur(4px) saturate(.7);
+}
+#panel.genie-expanded { opacity: 1; transform: translateY(0) scale(1); border-radius: 10px; filter: none; }
+#panel.genie-closing {
+  opacity: 0;
+  transform: translateY(-12px) scaleX(.18) scaleY(.035);
+  border-radius: 36px;
+  filter: blur(4px) saturate(.7);
 }
 
 #title {
   display: flex;
   align-items: center;
-  padding: 6px 10px 0 10px;
+  padding: 7px 10px 0 10px;
 }
 #dot { color: var(--good); font-size: 11px; }
 #name { color: #c8cdd4; font-weight: bold; font-size: 12px; margin-left: 4px; flex: 1; }
@@ -113,6 +148,67 @@ html, body {
 }
 #title button:hover { color: #ffffff; }
 
+/* ---------------- 宠物英雄区 ---------------- */
+#pet-hero {
+  min-height: 68px;
+  margin: 5px 8px 2px;
+  padding: 5px 7px 5px 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  background: linear-gradient(115deg, rgba(255,255,255,.08), rgba(255,255,255,.025));
+  overflow: hidden;
+}
+#companion-stage {
+  width: 68px;
+  height: 62px;
+  flex: 0 0 68px;
+  position: relative;
+  display: grid;
+  place-items: end center;
+}
+#companion-art {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  transform-origin: 50% 85%;
+  filter: drop-shadow(0 4px 4px rgba(0,0,0,.28));
+  animation: companion-idle 2.8s ease-in-out infinite;
+}
+#pet-emote {
+  position: absolute;
+  top: -1px;
+  right: 1px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 10px;
+  padding: 0 3px;
+  line-height: 16px;
+  text-align: center;
+  color: #fff;
+  background: rgba(20, 23, 29, .72);
+  font-size: 10px;
+  opacity: .9;
+}
+#pet-copy { min-width: 0; flex: 1; }
+#pet-name { color: #fff; font-size: 12px; font-weight: 750; }
+#pet-message { color: #d2d7e0; font-size: 11px; line-height: 1.35; margin-top: 2px; }
+#pet-mode { color: var(--sub); font-size: 10px; margin-top: 2px; }
+
+#pet-hero[data-state="boot"] #companion-art { animation: companion-look 1.8s ease-in-out infinite; }
+#pet-hero[data-state="refresh"] #companion-art { animation: companion-focus .7s ease-in-out infinite alternate; }
+#pet-hero[data-state="active"] #companion-art { animation: companion-celebrate .5s ease-in-out 3; }
+#pet-hero[data-state="error"] #companion-art { animation: companion-worry .42s ease-in-out 4; filter: grayscale(.25) saturate(.75) drop-shadow(0 4px 4px rgba(0,0,0,.28)); }
+#pet-hero[data-state="rest"] #companion-art { animation: companion-rest 3.2s ease-in-out infinite; filter: saturate(.72) brightness(.9) drop-shadow(0 4px 4px rgba(0,0,0,.28)); }
+
+@keyframes companion-idle { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-3px) rotate(-1deg); } }
+@keyframes companion-look { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-2px) rotate(3deg); } }
+@keyframes companion-focus { to { transform: translateY(-2px) scale(1.035); } }
+@keyframes companion-celebrate { 50% { transform: translateY(-11px) rotate(5deg) scale(1.07); } }
+@keyframes companion-worry { 25% { transform: translateX(-2px) rotate(-3deg); } 75% { transform: translateX(2px) rotate(3deg); } }
+@keyframes companion-rest { 0%,100% { transform: translateY(2px) scaleY(.97); } 50% { transform: translateY(4px) scaleY(.94); } }
+
 .row {
   display: flex;
   justify-content: space-between;
@@ -124,7 +220,7 @@ html, body {
 
 #btns {
   display: flex;
-  padding: 4px 10px;
+  padding: 4px 10px 3px;
 }
 #btns button {
   background: var(--panel-bg);

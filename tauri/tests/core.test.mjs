@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   fmtTokens, fmtMoney, fmtShort, fmtMoneyShort,
   hiddenRows, SessionStats, buildDetailCache,
+  COMPANIONS, PET_STATES, PET_REST_MS, pickCompanion, resolvePetState, petMessage,
 } from "../src/core.js";
 
 test("fmtTokens 千分位", () => {
@@ -65,4 +66,29 @@ test("buildDetailCache 展示规则", () => {
   const c2 = buildDetailCache({ ...u, total: null, cost: 0.8 }, s);
   assert.equal(c2.session_delta.show, true); // cost 口径
   assert.ok(c2.session_delta.text.startsWith("¥"));
+});
+
+test("伙伴随机选择不连续重复，锁定时保持当前伙伴", () => {
+  const previous = COMPANIONS[0];
+  const next = pickCompanion(COMPANIONS, previous.id, false, () => 0);
+  assert.notEqual(next.id, previous.id);
+  assert.equal(pickCompanion(COMPANIONS, previous.id, true).id, previous.id);
+  assert.equal(pickCompanion([], null), null);
+});
+
+test("宠物状态按请求、增量、空闲与错误切换", () => {
+  const before = { total: 100, cost: 1, balance: null };
+  const base = { usage: before, previousUsage: before, now: 10_000, lastActivityAt: 9_000 };
+  assert.equal(resolvePetState({ phase: "boot" }), PET_STATES.BOOT);
+  assert.equal(resolvePetState({ ...base, phase: "refresh" }), PET_STATES.REFRESH);
+  assert.equal(resolvePetState({ ...base, phase: "error" }), PET_STATES.ERROR);
+  assert.equal(resolvePetState({ ...base, usage: { ...before, total: 101 } }), PET_STATES.ACTIVE);
+  assert.equal(resolvePetState({ ...base, now: 9_000 + PET_REST_MS }), PET_STATES.REST);
+  assert.equal(resolvePetState(base), PET_STATES.IDLE);
+});
+
+test("宠物状态话包含伙伴名并能反映余额场景", () => {
+  assert.match(petMessage(COMPANIONS[0], PET_STATES.BOOT), /皮卡丘/);
+  assert.match(petMessage(COMPANIONS[0], PET_STATES.IDLE, { balance: 12 }), /余额/);
+  assert.match(petMessage(COMPANIONS[0], PET_STATES.ERROR), /检查连接/);
 });

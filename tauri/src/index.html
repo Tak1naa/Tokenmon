@@ -8,13 +8,24 @@
 </head>
 <body>
   <div id="stage">
-    <!-- 面板(展开时可见, 位于球上方) -->
+    <!-- 面板(展开时位于球两半之间) -->
     <div id="panel">
       <div id="title">
         <span id="dot">●</span>
         <span id="name">TokenMon</span>
         <button id="btn-close" title="关闭(托盘可重新拉起)">×</button>
         <button id="btn-refresh" title="刷新">⟳</button>
+      </div>
+      <div id="pet-hero" data-state="boot">
+        <div id="companion-stage">
+          <img id="companion-art" src="companions/pikachu.svg" alt="皮卡丘" draggable="false">
+          <span id="pet-emote" aria-hidden="true">…</span>
+        </div>
+        <div id="pet-copy">
+          <div id="pet-name">皮卡丘</div>
+          <div id="pet-message">皮卡丘正在确认连接</div>
+          <div id="pet-mode">启动中</div>
+        </div>
       </div>
       <div id="rows">
         <div class="row" data-key="total"><span class="rk">Token 用量</span><span class="rv" id="v-total">—</span></div>
@@ -24,6 +35,7 @@
       </div>
       <div id="btns">
         <button data-act="details">详情</button>
+        <button data-act="companion">伙伴</button>
         <button data-act="skin">皮肤</button>
         <button data-act="settings">设置</button>
       </div>
@@ -31,9 +43,11 @@
     </div>
     <!-- 精灵球: 上下两半用 overflow 容器裁剪, 开合动画移动容器 -->
     <div id="ballwrap">
-      <div class="clip c-top"><img id="half-top" src="skins/ball_pokeball.svg" alt="" draggable="false"></div>
-      <div class="clip c-bot"><img id="half-bot" src="skins/ball_pokeball.svg" alt="" draggable="false"></div>
-      <div id="ball-text"></div>
+      <div id="ball-core">
+        <div class="clip c-top"><img id="half-top" src="skins/ball_pokeball.svg" alt="" draggable="false"></div>
+        <div class="clip c-bot"><img id="half-bot" src="skins/ball_pokeball.svg" alt="" draggable="false"></div>
+        <div id="ball-text"></div>
+      </div>
     </div>
   </div>
   <!-- 右键/按钮弹出菜单 -->

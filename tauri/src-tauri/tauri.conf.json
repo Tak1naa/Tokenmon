@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "TokenMon",
+  "productName": "TokenMon Pet",
   "version": "2.0.0",
   "identifier": "io.github.tokenmon",
   "build": {
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "TokenMon",
+        "title": "TokenMon Pet",
         "width": 64,
         "height": 64,
         "x": 300,
@@ -35,8 +35,8 @@
     "active": true,
     "targets": ["nsis", "appimage", "deb", "rpm"],
     "category": "Utility",
-    "shortDescription": "LLM 网关 token 用量监视器",
-    "longDescription": "TokenMon —— 精灵球样式悬浮窗, 实时监控 LLM 网关 token 用量",
+    "shortDescription": "LLM token 监控桌面宠物",
+    "longDescription": "TokenMon Pet —— 精灵球收纳的桌面宠物，实时守护 LLM 网关 token 用量",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

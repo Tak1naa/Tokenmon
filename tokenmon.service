@@ -1,6 +1,6 @@
-# TokenMon systemd 用户服务 —— 开机自启动精灵球悬浮窗
+# TokenMon systemd 用户服务 —— 开机自启动 Tauri 宠物悬浮窗
 # 安装:
-#   1. 把 tokenmon.py 放到固定路径,例如 ~/.local/bin/tokenmon.py 并 chmod +x
+#   1. 先用 tauri 构建 TokenMon 二进制,再运行项目根目录 install.sh
 #   2. 把本文件复制到 ~/.config/systemd/user/tokenmon.service,
 #      并把 ExecStart 里的路径改成实际路径
 #   3. systemctl --user daemon-reload
@@ -15,7 +15,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 %h/.local/bin/tokenmon.py
+ExecStart=%h/.local/bin/tokenmon
 Restart=on-failure
 RestartSec=3
 

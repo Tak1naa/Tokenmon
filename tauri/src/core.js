@@ -4,6 +4,72 @@
 export const SKINS = { pokeball: "精灵球", master: "大师球", great: "超级球", ultra: "高级球" };
 export const DEFAULT_SKIN = "pokeball";
 
+// 宠物阵容与状态机保持在纯逻辑层：UI 可以替换素材，但不能各自解释数据状态。
+export const COMPANIONS = [
+  { id: "pikachu", name: "皮卡丘", element: "电" },
+  { id: "charmander", name: "小火龙", element: "火" },
+  { id: "squirtle", name: "杰尼龟", element: "水" },
+  { id: "bulbasaur", name: "妙蛙种子", element: "草" },
+];
+
+export const PET_STATES = Object.freeze({
+  BOOT: "boot",
+  IDLE: "idle",
+  REFRESH: "refresh",
+  ACTIVE: "active",
+  ERROR: "error",
+  REST: "rest",
+});
+
+export const PET_REST_MS = 5 * 60 * 1000;
+
+/** 在不连续重复的前提下随机选择伙伴；锁定时总是保留当前伙伴。 */
+export function pickCompanion(roster, previousId = null, locked = false, random = Math.random) {
+  if (!Array.isArray(roster) || roster.length === 0) return null;
+  if (locked && roster.some((item) => item.id === previousId)) {
+    return roster.find((item) => item.id === previousId);
+  }
+  const choices = roster.length > 1
+    ? roster.filter((item) => item.id !== previousId)
+    : roster;
+  return choices[Math.min(choices.length - 1, Math.floor(random() * choices.length))];
+}
+
+/**
+ * 由请求阶段、数据增量与空闲时长推导宠物状态。
+ * `previousUsage` 为空时视为第一次成功抓取，不误报为活跃。
+ */
+export function resolvePetState({ phase = "success", usage = null, previousUsage = null,
+  now = Date.now(), lastActivityAt = null }) {
+  if (phase === "boot" || !usage) return PET_STATES.BOOT;
+  if (phase === "refresh") return PET_STATES.REFRESH;
+  if (phase === "error") return PET_STATES.ERROR;
+
+  const totalGrew = previousUsage && usage.total !== null && usage.total !== undefined
+    && previousUsage.total !== null && previousUsage.total !== undefined
+    && Number(usage.total) > Number(previousUsage.total);
+  const costGrew = previousUsage && usage.cost !== null && usage.cost !== undefined
+    && previousUsage.cost !== null && previousUsage.cost !== undefined
+    && Number(usage.cost) > Number(previousUsage.cost);
+  if (totalGrew || costGrew) return PET_STATES.ACTIVE;
+  if (lastActivityAt && now - lastActivityAt >= PET_REST_MS) return PET_STATES.REST;
+  return PET_STATES.IDLE;
+}
+
+export function petMessage(companion, state, usage = null) {
+  const name = companion?.name || "小伙伴";
+  const hasBalance = usage?.balance !== null && usage?.balance !== undefined;
+  const messages = {
+    [PET_STATES.BOOT]: `${name} 正在确认连接`,
+    [PET_STATES.REFRESH]: `${name} 正在巡查用量`,
+    [PET_STATES.ACTIVE]: `${name} 发现新的用量`,
+    [PET_STATES.ERROR]: `${name} 需要你检查连接`,
+    [PET_STATES.REST]: `${name} 正在小憩`,
+    [PET_STATES.IDLE]: hasBalance ? `${name} 正在守护余额` : `${name} 正在守护会话`,
+  };
+  return messages[state] || messages[PET_STATES.IDLE];
+}
+
 export const BALL = 64;      // 球体显示尺寸
 export const PANEL_W = 200;  // 面板宽度
 export const SNAP_TH = 48;   // 边缘吸附阈值(px)
